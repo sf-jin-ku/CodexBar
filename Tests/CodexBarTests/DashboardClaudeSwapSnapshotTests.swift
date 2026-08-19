@@ -163,6 +163,44 @@ struct DashboardClaudeSwapSnapshotTests {
     }
 
     @Test
+    func `failed disambiguated accounts keep the raw email identity`() throws {
+        let list = ClaudeSwapAccountList(
+            activeAccountNumber: 1,
+            accounts: [
+                ClaudeSwapAccountRow(
+                    number: 1,
+                    email: "shared@example.com",
+                    organizationName: "Sendbird",
+                    alias: "Work",
+                    isActive: true,
+                    usageStatus: .tokenExpired,
+                    fiveHour: nil,
+                    sevenDay: nil),
+                ClaudeSwapAccountRow(
+                    number: 2,
+                    email: "shared@example.com",
+                    organizationName: "Acme",
+                    isActive: false,
+                    usageStatus: .noCredentials,
+                    fiveHour: nil,
+                    sevenDay: nil),
+            ])
+        let accounts = ClaudeSwapAccountProjection.accountSnapshots(from: list, now: self.generatedAt)
+        let providers = try self.providers(
+            identityMode: .full,
+            claudeSwap: DashboardClaudeSwapInput(accounts: accounts, adapterError: nil, weeklyWorkDays: nil))
+        let claude = try #require(providers.first { $0["id"] as? String == "claude" })
+        let rows = try #require(claude["accounts"] as? [[String: Any]])
+        #expect(rows.compactMap { $0["label"] as? String } == ["Work", "shared@example.com · Acme"])
+        #expect(rows.compactMap { ($0["identity"] as? [String: Any])?["accountEmail"] as? String } == [
+            "shared@example.com",
+            "shared@example.com",
+        ])
+        #expect((rows.last?["windows"] as? [Any])?.isEmpty == true)
+        #expect(rows.last?["updatedAt"] is NSNull)
+    }
+
+    @Test
     func `adapter failure adds only accounts error and preserves ambient fields`() throws {
         let providers = try self.providers(
             identityMode: .redacted,

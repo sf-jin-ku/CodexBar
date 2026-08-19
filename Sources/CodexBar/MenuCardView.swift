@@ -1076,13 +1076,15 @@ extension UsageMenuCardView.Model {
         metadata: ProviderMetadata,
         accountIsAuthoritative: Bool) -> String
     {
-        if accountIsAuthoritative, let email = account.email, !email.isEmpty {
+        // Provider-specific by design: claude-swap accountOverride is the display label
+        // (alias or email · org). Other stacked sources keep fetched identity first.
+        if accountIsAuthoritative, provider == .claude, let email = account.email, !email.isEmpty {
             return email
         }
         if let email = snapshot?.accountEmail(for: provider), !email.isEmpty {
             return email
         }
-        if metadata.usesAccountFallback,
+        if metadata.usesAccountFallback || accountIsAuthoritative,
            let email = account.email, !email.isEmpty
         {
             return email

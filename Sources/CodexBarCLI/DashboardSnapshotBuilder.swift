@@ -178,19 +178,20 @@ enum DashboardSnapshotBuilder {
     {
         // Provider-specific by design: identity stays the source email; the card label may be an alias
         // or an "email · org" disambiguation, and redaction rewrites only the email prefix.
-        let snapshotEmail = account.snapshot?.identity?.accountEmail
-        let email = snapshotEmail?.contains("@") == true
-            ? snapshotEmail
-            : (account.displayLabel.contains("@") ? account.displayLabel : nil)
-        let presentedEmail = identityMode != .none && email?.contains("@") == true
-            ? self.dashboardEmail(email, mode: identityMode)
+        let sourceEmail: String? = {
+            if let email = account.accountEmail, email.contains("@") { return email }
+            if let email = account.snapshot?.identity?.accountEmail, email.contains("@") { return email }
+            return nil
+        }()
+        let presentedEmail = identityMode != .none && sourceEmail?.contains("@") == true
+            ? self.dashboardEmail(sourceEmail, mode: identityMode)
             : nil
         let identity = presentedEmail.map { DashboardIdentityPayload(accountEmail: $0, plan: nil) }
         let trimmedLabel = account.displayLabel.trimmingCharacters(in: .whitespacesAndNewlines)
         let fallbackLabel = trimmedLabel.isEmpty ? "Account \(account.id.opaqueID)" : trimmedLabel
         let label = self.claudeSwapDashboardLabel(
             displayLabel: fallbackLabel,
-            sourceEmail: email,
+            sourceEmail: sourceEmail,
             presentedEmail: presentedEmail,
             accountID: account.id.opaqueID)
         // Provider-specific by design: claude-swap account windows and pace use Claude's presentation semantics.

@@ -30,6 +30,7 @@ public enum ClaudeSwapAccountProjection {
                 id: ProviderAccountIdentity(source: self.sourceName, opaqueID: String(row.number)),
                 provider: .claude,
                 displayLabel: label,
+                accountEmail: row.email.isEmpty ? nil : row.email,
                 isActive: row.isActive,
                 canActivate: !row.isActive && self.canActivate(row),
                 snapshot: self.usageSnapshot(for: row, now: now),
