@@ -874,7 +874,7 @@ extension UsageMenuCardView.Model {
             let title = input.provider == .doubao && namedWindow.id.contains("-team-")
                 ? "\(L(namedWindow.title)) (\(L("Team")))"
                 : L(namedWindow.title)
-            // Kiro overage is a second credit ceiling, so it reuses the Credits remaining copy.
+            // Provider-specific by design: Kiro overage remaining copy is unique to that extra window.
             let detailLeftText: String? = if usageKnown {
                 Self.kiroOverageRemainingDetail(
                     snapshot: snapshot,

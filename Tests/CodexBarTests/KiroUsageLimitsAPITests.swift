@@ -194,6 +194,34 @@ struct KiroUsageLimitsAPITests {
     }
 
     @Test
+    func `resolves kiro cli state database per platform and overrides`() {
+        let home = URL(fileURLWithPath: "/tmp/codexbar-kiro-home", isDirectory: true)
+        let mac = KiroUsageLimitsAPI.stateDatabaseURL(
+            homeDirectory: home,
+            environment: [:],
+            usesMacOSApplicationSupport: true)
+        #expect(mac.path == "/tmp/codexbar-kiro-home/Library/Application Support/kiro-cli/data.sqlite3")
+
+        let linux = KiroUsageLimitsAPI.stateDatabaseURL(
+            homeDirectory: home,
+            environment: [:],
+            usesMacOSApplicationSupport: false)
+        #expect(linux.path == "/tmp/codexbar-kiro-home/.local/share/kiro-cli/data.sqlite3")
+
+        let xdg = KiroUsageLimitsAPI.stateDatabaseURL(
+            homeDirectory: home,
+            environment: ["XDG_DATA_HOME": "/tmp/xdg-data"],
+            usesMacOSApplicationSupport: false)
+        #expect(xdg.path == "/tmp/xdg-data/kiro-cli/data.sqlite3")
+
+        let override = KiroUsageLimitsAPI.stateDatabaseURL(
+            homeDirectory: home,
+            environment: ["KIRO_DATA_DIR": "/tmp/kiro-data"],
+            usesMacOSApplicationSupport: true)
+        #expect(override.path == "/tmp/kiro-data/data.sqlite3")
+    }
+
+    @Test
     func `fetch enriches plan and overage from the usage api`() async throws {
         let limits = try KiroUsageLimitsAPI.parse(Data(Self.overageInUseResponse.utf8))
         let root = FileManager.default.temporaryDirectory

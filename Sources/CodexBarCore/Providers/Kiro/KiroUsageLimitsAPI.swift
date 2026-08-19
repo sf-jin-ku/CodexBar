@@ -95,13 +95,42 @@ public enum KiroUsageLimitsAPI: Sendable {
     private static let logger = CodexBarLog.logger(LogCategories.provider(.kiro, scope: "usage-api"))
 
     public static func stateDatabaseURL(
-        homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser) -> URL
+        homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser,
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        usesMacOSApplicationSupport: Bool = {
+            #if os(macOS)
+            true
+            #else
+            false
+            #endif
+        }()) -> URL
     {
-        homeDirectory
-            .appendingPathComponent("Library", isDirectory: true)
-            .appendingPathComponent("Application Support", isDirectory: true)
+        if let override = self.cleanedPath(environment["KIRO_DATA_DIR"]) {
+            return URL(fileURLWithPath: override, isDirectory: true)
+                .appendingPathComponent("data.sqlite3", isDirectory: false)
+        }
+        if usesMacOSApplicationSupport {
+            return homeDirectory
+                .appendingPathComponent("Library", isDirectory: true)
+                .appendingPathComponent("Application Support", isDirectory: true)
+                .appendingPathComponent("kiro-cli", isDirectory: true)
+                .appendingPathComponent("data.sqlite3", isDirectory: false)
+        }
+        let dataHome = self.cleanedPath(environment["XDG_DATA_HOME"]).map {
+            URL(fileURLWithPath: $0, isDirectory: true)
+        } ?? homeDirectory
+            .appendingPathComponent(".local", isDirectory: true)
+            .appendingPathComponent("share", isDirectory: true)
+        return dataHome
             .appendingPathComponent("kiro-cli", isDirectory: true)
             .appendingPathComponent("data.sqlite3", isDirectory: false)
+    }
+
+    private static func cleanedPath(_ raw: String?) -> String? {
+        guard let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty else {
+            return nil
+        }
+        return (trimmed as NSString).expandingTildeInPath
     }
 
     public static func fetch(
