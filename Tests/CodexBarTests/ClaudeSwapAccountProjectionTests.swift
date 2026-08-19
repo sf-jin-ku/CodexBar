@@ -80,7 +80,6 @@ struct ClaudeSwapAccountProjectionTests {
             (.apiKey, "API-key account"),
             (.keychainUnavailable, "Keychain"),
             (.noCredentials, "No stored credentials"),
-            (.unavailable, "Usage fetch failed"),
             (.unknown("mystery"), "mystery"),
         ]
 
@@ -101,9 +100,160 @@ struct ClaudeSwapAccountProjectionTests {
             #expect(snapshot.snapshot == nil)
             let error = try #require(snapshot.error)
             #expect(error.contains(entry.1))
-            let expectedCanActivate = entry.0 == .apiKey || entry.0 == .unavailable
-            #expect(snapshot.canActivate == expectedCanActivate)
+            #expect(snapshot.canActivate == (entry.0 == .apiKey))
         }
+    }
+
+    @Test
+    func `unavailable without windows or prior snapshot reports deferred polling`() throws {
+        let list = ClaudeSwapAccountList(
+            activeAccountNumber: nil,
+            accounts: [
+                ClaudeSwapAccountRow(
+                    number: 1,
+                    email: "a@b.c",
+                    isActive: false,
+                    usageStatus: .unavailable,
+                    fiveHour: nil,
+                    sevenDay: nil),
+            ])
+
+        let snapshot = try #require(ClaudeSwapAccountProjection.accountSnapshots(from: list, now: self.now).first)
+        #expect(snapshot.snapshot == nil)
+        #expect(snapshot.error == "Polling deferred until a limit resets.")
+        #expect(snapshot.canActivate == true)
+        #expect(snapshot.error?.contains("Usage fetch failed") != true)
+    }
+
+    @Test
+    func `projects usage windows even when status is unavailable`() throws {
+        let reset = Date(timeIntervalSince1970: 1_782_003_600)
+        let list = ClaudeSwapAccountList(
+            activeAccountNumber: 1,
+            accounts: [
+                ClaudeSwapAccountRow(
+                    number: 1,
+                    email: "a@b.c",
+                    isActive: true,
+                    usageStatus: .unavailable,
+                    fiveHour: ClaudeSwapUsageWindow(usedPercent: 100, resetsAt: reset),
+                    sevenDay: ClaudeSwapUsageWindow(usedPercent: 42, resetsAt: nil)),
+            ])
+
+        let account = try #require(ClaudeSwapAccountProjection.accountSnapshots(from: list, now: self.now).first)
+        let snapshot = try #require(account.snapshot)
+        #expect(snapshot.primary?.usedPercent == 100)
+        #expect(snapshot.secondary?.usedPercent == 42)
+        #expect(account.error == "Session limit reached. Resets in 1h.")
+        #expect(account.error?.contains("Usage fetch failed") != true)
+    }
+
+    @Test
+    func `names each exhausted window including scoped models`() throws {
+        let sessionReset = Date(timeIntervalSince1970: 1_782_003_600)
+        let weeklyReset = Date(timeIntervalSince1970: 1_782_259_200)
+        let list = ClaudeSwapAccountList(
+            activeAccountNumber: 1,
+            accounts: [
+                ClaudeSwapAccountRow(
+                    number: 1,
+                    email: "a@b.c",
+                    isActive: true,
+                    usageStatus: .unavailable,
+                    fiveHour: ClaudeSwapUsageWindow(usedPercent: 100, resetsAt: sessionReset),
+                    sevenDay: ClaudeSwapUsageWindow(usedPercent: 100, resetsAt: weeklyReset),
+                    scoped: [
+                        ClaudeSwapScopedUsageWindow(name: "Fable", usedPercent: 100, resetsAt: weeklyReset),
+                    ]),
+            ])
+
+        let account = try #require(ClaudeSwapAccountProjection.accountSnapshots(from: list, now: self.now).first)
+        #expect(account.snapshot?.primary?.usedPercent == 100)
+        #expect(account.snapshot?.secondary?.usedPercent == 100)
+        #expect(account.snapshot?.extraRateWindows?.first?.window.usedPercent == 100)
+        #expect(account.error == [
+            "Session limit reached. Resets in 1h.",
+            "Weekly limit reached. Resets in 3d.",
+            "Fable limit reached. Resets in 3d.",
+        ].joined(separator: " "))
+    }
+
+    @Test
+    func `unavailable without windows retains previous snapshot as current at limit usage`() throws {
+        let reset = Date(timeIntervalSince1970: 1_782_259_200)
+        let previousList = ClaudeSwapAccountList(
+            activeAccountNumber: 1,
+            accounts: [
+                ClaudeSwapAccountRow(
+                    number: 1,
+                    email: "a@b.c",
+                    isActive: true,
+                    usageStatus: .ok,
+                    fiveHour: ClaudeSwapUsageWindow(usedPercent: 100, resetsAt: reset),
+                    sevenDay: ClaudeSwapUsageWindow(usedPercent: 100, resetsAt: reset)),
+            ])
+        let previous = ClaudeSwapAccountProjection.accountSnapshots(from: previousList, now: self.now)
+        let list = ClaudeSwapAccountList(
+            activeAccountNumber: 1,
+            accounts: [
+                ClaudeSwapAccountRow(
+                    number: 1,
+                    email: "a@b.c",
+                    isActive: true,
+                    usageStatus: .unavailable,
+                    fiveHour: nil,
+                    sevenDay: nil),
+            ])
+
+        let account = try #require(
+            ClaudeSwapAccountProjection.accountSnapshots(
+                from: list,
+                previousAccounts: previous,
+                now: self.now.addingTimeInterval(3600)).first)
+        #expect(account.id == ProviderAccountIdentity(source: "claude-swap", opaqueID: "1"))
+        #expect(account.snapshot?.primary?.usedPercent == 100)
+        #expect(account.snapshot?.secondary?.usedPercent == 100)
+        #expect(account.snapshot?.updatedAt == self.now)
+        let error = try #require(account.error)
+        #expect(error.contains("Session limit reached"))
+        #expect(error.contains("Weekly limit reached"))
+        #expect(!error.contains("Usage fetch failed"))
+        #expect(!error.contains("last successful update"))
+    }
+
+    @Test
+    func `token expired does not retain a previous usage snapshot`() throws {
+        let previousList = ClaudeSwapAccountList(
+            activeAccountNumber: 1,
+            accounts: [
+                ClaudeSwapAccountRow(
+                    number: 1,
+                    email: "a@b.c",
+                    isActive: true,
+                    usageStatus: .ok,
+                    fiveHour: ClaudeSwapUsageWindow(usedPercent: 100, resetsAt: nil),
+                    sevenDay: nil),
+            ])
+        let previous = ClaudeSwapAccountProjection.accountSnapshots(from: previousList, now: self.now)
+        let list = ClaudeSwapAccountList(
+            activeAccountNumber: 1,
+            accounts: [
+                ClaudeSwapAccountRow(
+                    number: 1,
+                    email: "a@b.c",
+                    isActive: true,
+                    usageStatus: .tokenExpired,
+                    fiveHour: nil,
+                    sevenDay: nil),
+            ])
+
+        let account = try #require(
+            ClaudeSwapAccountProjection.accountSnapshots(
+                from: list,
+                previousAccounts: previous,
+                now: self.now).first)
+        #expect(account.snapshot == nil)
+        #expect(account.error?.contains("Token expired") == true)
     }
 
     @Test

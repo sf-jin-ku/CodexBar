@@ -8,6 +8,8 @@ public enum ClaudeSwapAccountProjection {
     public static let sourceLabel = "claude-swap"
     static let fiveHourWindowMinutes = 5 * 60
     static let sevenDayWindowMinutes = 7 * 24 * 60
+    static let exhaustedUsedPercent = 100.0
+    static let deferredPollingNote = "Polling deferred until a limit resets."
 
     public static func shouldPresentAccounts(accountCount: Int, showSingleAccount: Bool) -> Bool {
         accountCount >= (showSingleAccount ? 1 : 2)
@@ -15,8 +17,12 @@ public enum ClaudeSwapAccountProjection {
 
     public static func accountSnapshots(
         from list: ClaudeSwapAccountList,
+        previousAccounts: [ProviderAccountUsageSnapshot] = [],
         now: Date = Date()) -> [ProviderAccountUsageSnapshot]
     {
+        let previousByID = Dictionary(
+            previousAccounts.map { ($0.id, $0) },
+            uniquingKeysWith: { first, _ in first })
         let ordered = list.accounts.sorted { lhs, rhs in
             if lhs.isActive != rhs.isActive {
                 return lhs.isActive
@@ -24,14 +30,19 @@ public enum ClaudeSwapAccountProjection {
             return lhs.number < rhs.number
         }
         return ordered.map { row in
-            ProviderAccountUsageSnapshot(
-                id: ProviderAccountIdentity(source: self.sourceName, opaqueID: String(row.number)),
+            let id = ProviderAccountIdentity(source: self.sourceName, opaqueID: String(row.number))
+            let snapshot = self.usageSnapshot(
+                for: row,
+                previous: previousByID[id]?.snapshot,
+                now: now)
+            return ProviderAccountUsageSnapshot(
+                id: id,
                 provider: .claude,
                 displayLabel: self.displayLabel(for: row),
                 isActive: row.isActive,
                 canActivate: !row.isActive && self.canActivate(row),
-                snapshot: self.usageSnapshot(for: row, now: now),
-                error: self.errorText(for: row),
+                snapshot: snapshot,
+                error: self.errorText(for: row, snapshot: snapshot, now: now),
                 sourceLabel: self.sourceLabel)
         }
     }
@@ -50,8 +61,19 @@ public enum ClaudeSwapAccountProjection {
         row.email.isEmpty ? "Account \(row.number)" : row.email
     }
 
-    private static func usageSnapshot(for row: ClaudeSwapAccountRow, now: Date) -> UsageSnapshot? {
-        guard row.usageStatus == .ok else { return nil }
+    private static func usageSnapshot(
+        for row: ClaudeSwapAccountRow,
+        previous: UsageSnapshot?,
+        now: Date) -> UsageSnapshot?
+    {
+        if let projected = self.projectedUsageSnapshot(for: row, now: now) {
+            return projected
+        }
+        guard row.usageStatus == .unavailable else { return nil }
+        return previous
+    }
+
+    private static func projectedUsageSnapshot(for row: ClaudeSwapAccountRow, now: Date) -> UsageSnapshot? {
         let primary = row.fiveHour.map { window in
             RateWindow(
                 usedPercent: window.usedPercent,
@@ -92,12 +114,10 @@ public enum ClaudeSwapAccountProjection {
         })
     }
 
-    private static func errorText(for row: ClaudeSwapAccountRow) -> String? {
+    private static func errorText(for row: ClaudeSwapAccountRow, snapshot: UsageSnapshot?, now: Date) -> String? {
         switch row.usageStatus {
         case .ok:
-            row.fiveHour == nil && row.sevenDay == nil && self.scopedRateWindows(for: row).isEmpty
-                ? "No usage windows reported."
-                : nil
+            snapshot == nil ? "No usage windows reported." : nil
         case .tokenExpired:
             "Token expired. Switch to this account in claude-swap to refresh it."
         case .reloginRequired:
@@ -109,10 +129,46 @@ public enum ClaudeSwapAccountProjection {
         case .noCredentials:
             "No stored credentials for this account slot."
         case .unavailable:
-            "Usage fetch failed."
+            self.atLimitNote(from: snapshot, now: now) ?? self.deferredPollingNote
         case let .unknown(raw):
             "Unrecognized claude-swap status: \(raw)"
         }
+    }
+
+    private static func atLimitNote(from snapshot: UsageSnapshot?, now: Date) -> String? {
+        guard let snapshot else { return nil }
+        var parts: [String] = []
+        if let primary = snapshot.primary {
+            self.appendLimit(named: "Session", window: primary, now: now, to: &parts)
+        }
+        if let secondary = snapshot.secondary {
+            self.appendLimit(named: "Weekly", window: secondary, now: now, to: &parts)
+        }
+        for extra in snapshot.extraRateWindows ?? [] {
+            self.appendLimit(named: self.scopedLimitName(extra.title), window: extra.window, now: now, to: &parts)
+        }
+        guard !parts.isEmpty else { return nil }
+        return parts.joined(separator: " ")
+    }
+
+    private static func appendLimit(
+        named name: String,
+        window: RateWindow,
+        now: Date,
+        to parts: inout [String])
+    {
+        guard window.usedPercent >= self.exhaustedUsedPercent else { return }
+        if let reset = UsageFormatter.resetLine(for: window, style: .countdown, now: now) {
+            parts.append("\(name) limit reached. \(reset).")
+        } else {
+            parts.append("\(name) limit reached.")
+        }
+    }
+
+    private static func scopedLimitName(_ title: String) -> String {
+        let suffix = " only"
+        guard title.hasSuffix(suffix) else { return title }
+        return String(title.dropLast(suffix.count))
     }
 
     private static func canActivate(_ row: ClaudeSwapAccountRow) -> Bool {
