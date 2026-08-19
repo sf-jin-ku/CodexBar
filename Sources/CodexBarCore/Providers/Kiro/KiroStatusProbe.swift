@@ -145,8 +145,15 @@ public struct KiroUsageSnapshot: Sendable {
         // The API states whether overage is enabled. The CLI omits the whole overage section for
         // organization accounts, so its status line is only consulted when the API is unavailable.
         let overageCap = self.usageLimits?.overageCap
-        let overagesEnabled = if self.usageLimits != nil {
-            overageCap != nil
+        let overagesEnabled: Bool = if let limits = self.usageLimits {
+            if let enabled = limits.overageEnabled {
+                enabled && overageCap != nil
+            } else {
+                self.overagesStatus?
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .lowercased()
+                    .hasPrefix("enabled") == true
+            }
         } else {
             self.overagesStatus?
                 .trimmingCharacters(in: .whitespacesAndNewlines)

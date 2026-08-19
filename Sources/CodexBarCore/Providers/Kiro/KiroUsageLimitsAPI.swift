@@ -21,6 +21,8 @@ public struct KiroUsageLimits: Equatable, Sendable {
     public let overageUsed: Double
     /// Maximum overage credits the account may spend, or nil when overage is not enabled.
     public let overageCap: Double?
+    /// `true`/`false` when the API stated ENABLED/DISABLED; `nil` when the status was omitted or unrecognized.
+    public let overageEnabled: Bool?
     /// Charges accrued for `overageUsed`, in `currencyCode`.
     public let overageCharges: Double?
     /// Price per overage credit, in `currencyCode`.
@@ -33,6 +35,7 @@ public struct KiroUsageLimits: Equatable, Sendable {
         planUsed: Double,
         overageUsed: Double,
         overageCap: Double?,
+        overageEnabled: Bool? = nil,
         overageCharges: Double?,
         overageRate: Double?,
         currencyCode: String,
@@ -42,6 +45,7 @@ public struct KiroUsageLimits: Equatable, Sendable {
         self.planUsed = planUsed
         self.overageUsed = overageUsed
         self.overageCap = overageCap
+        self.overageEnabled = overageEnabled
         self.overageCharges = overageCharges
         self.overageRate = overageRate
         self.currencyCode = currencyCode
@@ -79,6 +83,7 @@ public enum KiroUsageLimitsAPI: Sendable {
     private static let contentType = "application/x-amz-json-1.0"
     private static let creditResource = "CREDIT"
     private static let overageEnabled = "ENABLED"
+    private static let overageDisabled = "DISABLED"
     private static let requestTimeout: TimeInterval = 10
     /// Plausible Unix seconds for a billing reset: 2001-09-09 through 2100-01-01. A value outside
     /// this range is a unit change, not a date — milliseconds would land far beyond any real reset.
@@ -161,9 +166,12 @@ public enum KiroUsageLimitsAPI: Sendable {
             throw KiroUsageLimitsError.parseError("overage exceeds total usage")
         }
         let planUsed = totalUsed - overageUsed
+        guard planUsed <= planLimit else {
+            throw KiroUsageLimitsError.parseError("plan usage exceeds plan limit")
+        }
 
-        let overageIsEnabled = response.overageConfiguration?.overageStatus == self.overageEnabled
-        let overageCap: Double? = if overageIsEnabled, let cap = credit.overageCapWithPrecision {
+        let overageEnabled = self.overageAvailability(response.overageConfiguration?.overageStatus)
+        let overageCap: Double? = if overageEnabled == true, let cap = credit.overageCapWithPrecision {
             try self.usableCredits(cap, field: "overage cap")
         } else {
             nil
@@ -178,10 +186,23 @@ public enum KiroUsageLimitsAPI: Sendable {
             planUsed: planUsed,
             overageUsed: overageUsed,
             overageCap: overageCap,
+            overageEnabled: overageEnabled,
             overageCharges: credit.overageCharges.flatMap { $0.isFinite && $0 >= 0 ? $0 : nil },
             overageRate: credit.overageRate.flatMap { $0.isFinite && $0 > 0 ? $0 : nil },
             currencyCode: credit.currency ?? "USD",
             resetsAt: resetsAt)
+    }
+
+    private static func overageAvailability(_ status: String?) -> Bool? {
+        guard let status, !status.isEmpty else { return nil }
+        switch status.uppercased() {
+        case self.overageEnabled:
+            return true
+        case self.overageDisabled:
+            return false
+        default:
+            return nil
+        }
     }
 
     private static func usableCredits(_ value: Double, field: String) throws -> Double {

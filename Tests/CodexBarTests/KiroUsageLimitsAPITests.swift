@@ -28,6 +28,7 @@ struct KiroUsageLimitsAPITests {
         #expect(limits.planUsed == 10000)
         #expect(limits.overageUsed == 3603.49)
         #expect(limits.overageCap == 10000)
+        #expect(limits.overageEnabled == true)
         #expect(limits.overageCharges == 144.139711109352)
         #expect(limits.overageRate == 0.04)
         #expect(limits.currencyCode == "USD")
@@ -53,6 +54,7 @@ struct KiroUsageLimitsAPITests {
         let limits = try KiroUsageLimitsAPI.parse(Data(json.utf8))
 
         #expect(limits.overageCap == nil)
+        #expect(limits.overageEnabled == false)
         #expect(limits.overageChargeLimit == nil)
         // Disabling overage does not un-spend it: `currentUsage` still includes those credits, so
         // the plan portion stays the remainder and never reads above the plan limit.
@@ -155,6 +157,40 @@ struct KiroUsageLimitsAPITests {
         #expect(rows.contains { $0.label == "Overages" && $0.value.hasPrefix("Enabled") })
         #expect(rows.contains { $0.label == "Overage usage" } == false)
         #expect(rows.contains { $0.label == "Overage credits left" } == false)
+    }
+
+    @Test
+    func `rejects plan usage above the reported plan limit`() {
+        let json = Self.overageInUseResponse
+            .replacingOccurrences(
+                of: "\"currentOveragesWithPrecision\":3603.49",
+                with: "\"currentOveragesWithPrecision\":0")
+        #expect(throws: KiroUsageLimitsError.self) {
+            try KiroUsageLimitsAPI.parse(Data(json.utf8))
+        }
+    }
+
+    @Test
+    func `unknown overage status is not treated as disabled`() throws {
+        let json = Self.overageInUseResponse
+            .replacingOccurrences(
+                of: "\"overageStatus\":\"ENABLED\"",
+                with: "\"overageStatus\":\"FUTURE_STATUS\"")
+        let limits = try KiroUsageLimitsAPI.parse(Data(json.utf8))
+        #expect(limits.overageEnabled == nil)
+        #expect(limits.overageCap == nil)
+
+        let probe = KiroStatusProbe()
+        let cliReport = try probe.parse(output: """
+        Estimated Usage | resets on 2026-09-01 | KIRO POWER
+        Credits (10000.00 of 10000 covered in plan)
+        ████████████████████████████████████████████████████████████████████████████████ 100%
+        Overages: Enabled billed at $0.04 per request
+        """)
+        let snapshot = cliReport.withUsageLimits(limits).toUsageSnapshot()
+        let rows = snapshot.details.flatMap(\.rows)
+        #expect(rows.contains { $0.label == "Overages" && $0.value.hasPrefix("Enabled") })
+        #expect(rows.contains { $0.label == "Overage usage" })
     }
 
     @Test
