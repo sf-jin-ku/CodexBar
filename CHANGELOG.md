@@ -2,6 +2,9 @@
 
 ## 0.49.3 — Unreleased
 
+### Added
+- Kiro: show overage credits spent against their cap, plus accrued charges against the overage budget. The `kiro-cli` report states credits against the plan alone and omits the overage section entirely for organization accounts, so CodexBar now reads the plan and overage ceilings from the same `GetUsageLimits` service the CLI itself calls, falling back to the CLI report when it is unavailable.
+
 ### Fixed
 - CLI: stop standalone version lookup from walking past the filesystem root and hanging with unbounded memory on affected macOS versions (#2856). Thanks @Manwholikespie!
 - Cost store: prevent launch-time executor-assumption crashes on macOS 15 by keeping synchronous SQLite cache bridges on their validated serial queue (#2857). Thanks @Manwholikespie!
