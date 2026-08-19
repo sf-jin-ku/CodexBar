@@ -196,7 +196,8 @@ enum DashboardSnapshotBuilder {
             displayLabel: fallbackLabel,
             sourceEmail: sourceEmail,
             presentedEmail: presentedEmail,
-            accountID: account.id.opaqueID)
+            accountID: account.id.opaqueID,
+            identityMode: identityMode)
         // Provider-specific by design: claude-swap account windows and pace use Claude's presentation semantics.
         let metadata = ProviderDescriptorRegistry.descriptor(for: UsageProvider.claude).metadata
         return DashboardAccountPayload(
@@ -220,16 +221,20 @@ enum DashboardSnapshotBuilder {
         displayLabel: String,
         sourceEmail: String?,
         presentedEmail: String?,
-        accountID: String) -> String
+        accountID: String,
+        identityMode: DashboardIdentityMode) -> String
     {
         if let presentedEmail {
-            guard displayLabel.contains("@"),
-                  let sourceEmail,
-                  displayLabel == sourceEmail || displayLabel.hasPrefix(sourceEmail)
-            else {
-                return displayLabel
+            if let sourceEmail,
+               displayLabel.contains("@"),
+               displayLabel == sourceEmail || displayLabel.hasPrefix(sourceEmail)
+            {
+                return presentedEmail + String(displayLabel.dropFirst(sourceEmail.count))
             }
-            return presentedEmail + String(displayLabel.dropFirst(sourceEmail.count))
+            if identityMode == .redacted, displayLabel.contains("@") {
+                return self.dashboardEmail(displayLabel, mode: .redacted) ?? "Account \(accountID)"
+            }
+            return displayLabel
         }
         return displayLabel.contains("@") ? "Account \(accountID)" : displayLabel
     }

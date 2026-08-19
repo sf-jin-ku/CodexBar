@@ -73,10 +73,6 @@ public enum ClaudeSwapAccountProjection {
         return Set(counts.compactMap { $0.value > 1 ? $0.key : nil })
     }
 
-    private static func accountOrganization(for row: ClaudeSwapAccountRow) -> String? {
-        row.organizationName.isEmpty ? nil : row.organizationName
-    }
-
     private static func usageSnapshot(for row: ClaudeSwapAccountRow, now: Date) -> UsageSnapshot? {
         guard row.usageStatus == .ok else { return nil }
         let primary = row.fiveHour.map { window in
@@ -103,7 +99,7 @@ public enum ClaudeSwapAccountProjection {
             identity: ProviderIdentitySnapshot(
                 providerID: .claude,
                 accountEmail: row.email.isEmpty ? nil : row.email,
-                accountOrganization: self.accountOrganization(for: row),
+                accountOrganization: nil,
                 loginMethod: self.sourceLabel))
     }
 

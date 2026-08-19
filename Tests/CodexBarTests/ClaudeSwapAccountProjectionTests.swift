@@ -208,8 +208,11 @@ struct ClaudeSwapAccountProjectionTests {
             now: self.now)
 
         #expect(snapshots.map(\.displayLabel) == ["personal@example.com", "work@example.com"])
-        #expect(snapshots.first?.snapshot?.identity?.accountOrganization == "Acme")
-        #expect(snapshots.last?.snapshot?.identity?.accountOrganization == "Sendbird")
+        #expect(snapshots.map { $0.snapshot?.identity?.accountOrganization } == [nil, nil])
+        #expect(snapshots.map { $0.snapshot?.identity?.accountEmail } == [
+            "personal@example.com",
+            "work@example.com",
+        ])
         #expect(snapshots.map(\.id.opaqueID) == ["2", "1"])
     }
 
@@ -228,7 +231,7 @@ struct ClaudeSwapAccountProjectionTests {
         #expect(snapshots.first?.id == ProviderAccountIdentity(source: "claude-swap", opaqueID: "4"))
         #expect(snapshots.last?.id == ProviderAccountIdentity(source: "claude-swap", opaqueID: "1"))
         #expect(snapshots.first?.snapshot?.identity?.accountOrganization == nil)
-        #expect(snapshots.last?.snapshot?.identity?.accountOrganization == "Sendbird")
+        #expect(snapshots.last?.snapshot?.identity?.accountOrganization == nil)
         #expect(snapshots.first?.snapshot?.identity?.accountEmail == "shared@example.com")
     }
 
@@ -243,7 +246,7 @@ struct ClaudeSwapAccountProjectionTests {
 
         #expect(snapshots.map(\.displayLabel) == ["Work", "shared@example.com · Acme", "Empty slot"])
         #expect(snapshots.map(\.id.opaqueID) == ["1", "2", "3"])
-        #expect(snapshots.map { $0.snapshot?.identity?.accountOrganization } == ["Sendbird", "Acme", nil])
+        #expect(snapshots.map { $0.snapshot?.identity?.accountOrganization } == [nil, nil, nil])
         #expect(snapshots.map { $0.snapshot?.identity?.accountEmail } == [
             "shared@example.com",
             "shared@example.com",
