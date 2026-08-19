@@ -106,12 +106,15 @@ extension UsageStore {
             guard let usage = accountSnapshot.snapshot else { continue }
             let identity = usage.identity?.accountID
                 ?? usage.identity?.accountEmail
+                ?? accountSnapshot.accountEmail
                 ?? "\(accountSnapshot.id.source):\(accountSnapshot.id.opaqueID)"
             let payload = AccountSnapshotSyncPayload(
                 provider: accountSnapshot.provider.instanceID,
                 deviceID: deviceID,
                 accountIdentity: identity,
-                displayLabel: accountSnapshot.displayLabel,
+                displayLabel: accountSnapshot.accountEmail
+                    ?? usage.identity?.accountEmail
+                    ?? "Account \(accountSnapshot.id.opaqueID)",
                 usage: usage)
             payloads[payload.recordName] = payload
         }
