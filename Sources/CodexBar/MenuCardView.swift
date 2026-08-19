@@ -41,9 +41,12 @@ struct UsageMenuCardView: View {
             let detailLeftText: String?
             let detailRightText: String?
             let pacePercent: Double?
+            /// True when detailLeftText/detailRightText came from a pace forecast.
+            let detailIsPaceDerived: Bool
             let paceOnTop: Bool
             let warningMarkerPercents: [Double]
             let workdayMarkerPercents: [Double]
+            let workdayTickAppearance: WorkdayTickAppearance
             let cardStyle: Bool
             let sessionEquivalentDetail: UsagePaceText.SessionEquivalentDetail?
 
@@ -58,9 +61,11 @@ struct UsageMenuCardView: View {
                 detailLeftText: String?,
                 detailRightText: String?,
                 pacePercent: Double?,
+                detailIsPaceDerived: Bool = false,
                 paceOnTop: Bool,
                 warningMarkerPercents: [Double] = [],
                 workdayMarkerPercents: [Double] = [],
+                workdayTickAppearance: WorkdayTickAppearance = .subtle,
                 cardStyle: Bool = false,
                 sessionEquivalentDetail: UsagePaceText.SessionEquivalentDetail? = nil)
             {
@@ -74,9 +79,11 @@ struct UsageMenuCardView: View {
                 self.detailLeftText = detailLeftText
                 self.detailRightText = detailRightText
                 self.pacePercent = pacePercent
+                self.detailIsPaceDerived = detailIsPaceDerived
                 self.paceOnTop = paceOnTop
                 self.warningMarkerPercents = warningMarkerPercents
                 self.workdayMarkerPercents = workdayMarkerPercents
+                self.workdayTickAppearance = workdayTickAppearance
                 self.cardStyle = cardStyle
                 self.sessionEquivalentDetail = sessionEquivalentDetail
             }
@@ -539,7 +546,8 @@ private struct MetricRow: View {
                     pacePercent: self.metric.pacePercent,
                     paceOnTop: self.metric.paceOnTop,
                     warningMarkerPercents: self.metric.warningMarkerPercents,
-                    workdayMarkerPercents: self.metric.workdayMarkerPercents)
+                    workdayMarkerPercents: self.metric.workdayMarkerPercents,
+                    workdayTickAppearance: self.metric.workdayTickAppearance)
                 if let metaText = presentation.metaText {
                     Text(metaText)
                         .font(.footnote)
@@ -940,7 +948,7 @@ extension UsageMenuCardView.Model {
             override: input.planOverride,
             metadata: input.metadata)
         let metrics = Self.redactedMetrics(
-            Self.metrics(input: input),
+            Self.paceGatedMetrics(Self.metrics(input: input), paceVisible: input.paceVisible),
             provider: input.provider,
             hidePersonalInfo: input.hidePersonalInfo)
         let openAIAPIUsage = input.snapshot?.openAIAPIUsage
@@ -971,7 +979,13 @@ extension UsageMenuCardView.Model {
         let providerCostStyle = input.snapshot.map {
             presentation.cost(snapshot: $0).menuCardStyle
         } ?? .generic
-        let providerCost: ProviderCostSection? = if !showsProviderCost {
+        let providerCostFollowsSummaryStyle = Self.providerCostFollowsSummaryStyle(
+            cost: input.snapshot?.providerCost,
+            style: providerCostStyle,
+            isClaudeAdminAPI: isClaudeAdminAPI)
+        let providerCost: ProviderCostSection? = if !showsProviderCost ||
+            (providerCostFollowsSummaryStyle && !input.costSummaryInlineEnabled)
+        {
             nil
         } else {
             Self.providerCostSection(
@@ -1027,8 +1041,13 @@ extension UsageMenuCardView.Model {
 
     private static func visibleProviderDetails(input: Input) -> [ProviderDetailSection] {
         var details = input.snapshot?.details ?? []
+        let policy = ProviderDescriptorRegistry.descriptor(for: input.provider).presentation.optionalDetails
+        if !input.costSummaryInlineEnabled, !policy.costSummaryTitles.isEmpty {
+            details.removeAll { section in
+                section.title.map(policy.costSummaryTitles.contains) == true
+            }
+        }
         if !input.showOptionalCreditsAndExtraUsage {
-            let policy = ProviderDescriptorRegistry.descriptor(for: input.provider).presentation.optionalDetails
             if policy.hidesAllWithoutOptionalUsage {
                 details = []
             } else if !policy.hiddenTitlesWithoutOptionalUsage.isEmpty {
@@ -1040,6 +1059,7 @@ extension UsageMenuCardView.Model {
         if input.provider == .sub2api {
             details = Self.sub2APILocalizedDetails(details)
         }
+        details = Self.localizedProviderDetails(details, provider: input.provider)
         guard input.hidePersonalInfo else { return details }
         return details.compactMap { section in
             let rows = section.rows.compactMap { row in
@@ -1078,6 +1098,13 @@ extension UsageMenuCardView.Model {
     {
         if let email = snapshot?.accountEmail(for: provider), !email.isEmpty {
             return email
+        }
+        // Provider-specific by design: Cursor app auth can expose only a subject ID, so its card needs this fallback.
+        if provider == .cursor,
+           let accountID = snapshot?.identity(for: .cursor)?.accountID?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !accountID.isEmpty
+        {
+            return accountID.split(separator: "|", omittingEmptySubsequences: true).last.map(String.init) ?? accountID
         }
         if metadata.usesAccountFallback || accountIsAuthoritative,
            let email = account.email, !email.isEmpty
@@ -1305,6 +1332,7 @@ extension UsageMenuCardView.Model {
                 detailLeftText: tertiaryPaceDetail?.leftLabel,
                 detailRightText: tertiaryPaceDetail?.rightLabel,
                 pacePercent: tertiaryPaceDetail?.pacePercent,
+                detailIsPaceDerived: tertiaryPaceDetail?.isPaceDerived ?? false,
                 paceOnTop: tertiaryPaceDetail?.paceOnTop ?? true,
                 warningMarkerPercents: Self.warningMarkerPercents(
                     thresholds: input.quotaWarningThresholds[.weekly],
@@ -1370,6 +1398,9 @@ extension UsageMenuCardView.Model {
             Self.applyPrimaryPacePresentation(&presentation, input: input, primary: primary)
         }
         Self.applyPrimaryFinalOverrides(&presentation, input: input, primary: primary)
+        if input.provider == .zai, let resetText = Self.localizedZaiPeriodicResetText(primary) {
+            presentation.resetText = resetText
+        }
         if let bindingProjection {
             let resetWindow = RateWindow(
                 usedPercent: bindingProjection.usedPercent,
@@ -1393,6 +1424,7 @@ extension UsageMenuCardView.Model {
             detailLeftText: presentation.detailLeft,
             detailRightText: presentation.detailRight,
             pacePercent: presentation.pacePercent,
+            detailIsPaceDerived: presentation.detailIsPaceDerived,
             paceOnTop: presentation.paceOnTop,
             warningMarkerPercents: Self.warningMarkerPercents(
                 thresholds: input.quotaWarningThresholds[.session],
@@ -1521,13 +1553,17 @@ extension UsageMenuCardView.Model {
             detailLeftText: paceDetail?.leftLabel,
             detailRightText: paceDetail?.rightLabel,
             pacePercent: paceDetail?.pacePercent,
+            detailIsPaceDerived: paceDetail?.isPaceDerived ?? false,
             paceOnTop: paceDetail?.paceOnTop ?? true,
             warningMarkerPercents: Self.warningMarkerPercents(
                 thresholds: input.quotaWarningThresholds[.weekly],
                 showUsed: input.usageBarsShowUsed),
-            workdayMarkerPercents: workDayMarkerPercents(
-                workDays: input.workDaysPerWeek,
-                windowMinutes: weekly.windowMinutes),
+            workdayMarkerPercents: input.workdayTickAppearance == .hidden
+                ? []
+                : workDayMarkerPercents(
+                    workDays: input.workDaysPerWeek,
+                    windowMinutes: weekly.windowMinutes),
+            workdayTickAppearance: input.workdayTickAppearance,
             sessionEquivalentDetail: Self.sessionEquivalentDetail(
                 input: input,
                 weeklyWindow: weekly,
