@@ -89,17 +89,39 @@ public enum ClaudeSwapAccountProjection {
         if !previousEmail.isEmpty, !rowEmail.isEmpty, previousEmail != rowEmail {
             return nil
         }
-        guard self.hasApplicableExhaustedWindow(snapshot, now: now) else { return nil }
-        return snapshot
+        return self.prunedAtLimitSnapshot(snapshot, now: now)
     }
 
-    private static func hasApplicableExhaustedWindow(_ snapshot: UsageSnapshot, now: Date) -> Bool {
-        let windows = [snapshot.primary, snapshot.secondary].compactMap(\.self)
-            + (snapshot.extraRateWindows ?? []).map(\.window)
-        return windows.contains { window in
-            window.usedPercent >= self.exhaustedUsedPercent
-                && (window.resetsAt.map { $0 > now } ?? true)
+    /// Drops windows whose reset is in the past so a mixed snapshot cannot keep showing
+    /// an already-reset lane as "Resets now" just because a sibling is still exhausted.
+    private static func prunedAtLimitSnapshot(_ snapshot: UsageSnapshot, now: Date) -> UsageSnapshot? {
+        let primary = self.unexpiredWindow(snapshot.primary, now: now)
+        let secondary = self.unexpiredWindow(snapshot.secondary, now: now)
+        let extra = (snapshot.extraRateWindows ?? []).compactMap { named -> NamedRateWindow? in
+            guard let window = self.unexpiredWindow(named.window, now: now) else { return nil }
+            return NamedRateWindow(
+                id: named.id,
+                title: named.title,
+                window: window,
+                usageKnown: named.usageKnown)
         }
+        let remaining = [primary, secondary].compactMap(\.self) + extra.map(\.window)
+        guard remaining.contains(where: { $0.usedPercent >= self.exhaustedUsedPercent }) else {
+            return nil
+        }
+        return UsageSnapshot(
+            primary: primary,
+            secondary: secondary,
+            extraRateWindows: extra.isEmpty ? nil : extra,
+            updatedAt: snapshot.updatedAt,
+            identity: snapshot.identity,
+            dataConfidence: snapshot.dataConfidence)
+    }
+
+    private static func unexpiredWindow(_ window: RateWindow?, now: Date) -> RateWindow? {
+        guard let window else { return nil }
+        guard window.resetsAt.map({ $0 > now }) ?? true else { return nil }
+        return window
     }
 
     private static func projectedUsageSnapshot(for row: ClaudeSwapAccountRow, now: Date) -> UsageSnapshot? {

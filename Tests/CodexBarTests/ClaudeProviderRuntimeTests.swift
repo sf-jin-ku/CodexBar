@@ -185,7 +185,7 @@ struct ClaudeProviderRuntimeTests {
         settings.setProviderEnabled(provider: .claude, metadata: metadata, enabled: true)
         settings.claudeSwapExecutablePath = executable
         settings.claudeSwapEnabled = true
-        let now = Date(timeIntervalSince1970: 1_782_000_000)
+        let now = Date()
         let previous = ClaudeSwapAccountProjection.accountSnapshots(
             from: ClaudeSwapAccountList(
                 activeAccountNumber: 1,
