@@ -56,6 +56,44 @@ struct DashboardClaudeSwapSnapshotTests {
     }
 
     @Test
+    func `shared emails stay distinct and alias replaces the email label`() throws {
+        let accounts = ClaudeSwapAccountProjection.accountSnapshots(
+            from: ClaudeSwapAccountList(
+                activeAccountNumber: 1,
+                accounts: [
+                    self.accountRow(
+                        number: 1,
+                        email: "shared@example.com",
+                        organizationName: "Sendbird",
+                        alias: "Work",
+                        active: true),
+                    self.accountRow(
+                        number: 2,
+                        email: "shared@example.com",
+                        organizationName: "Acme",
+                        active: false),
+                ]),
+            now: self.generatedAt)
+        let providers = try self.providers(
+            identityMode: .full,
+            claudeSwap: DashboardClaudeSwapInput(accounts: accounts, adapterError: nil, weeklyWorkDays: nil))
+        let claude = try #require(providers.first { $0["id"] as? String == "claude" })
+        let rows = try #require(claude["accounts"] as? [[String: Any]])
+        #expect(rows.compactMap { $0["label"] as? String } == ["Work", "shared@example.com · Acme"])
+        #expect(rows.compactMap { $0["id"] as? String } == ["claude-swap:1", "claude-swap:2"])
+
+        let redactedProviders = try self.providers(
+            identityMode: .redacted,
+            claudeSwap: DashboardClaudeSwapInput(accounts: accounts, adapterError: nil, weeklyWorkDays: nil))
+        let redactedClaude = try #require(redactedProviders.first { $0["id"] as? String == "claude" })
+        let redactedRows = try #require(redactedClaude["accounts"] as? [[String: Any]])
+        #expect(redactedRows.compactMap { $0["label"] as? String } == [
+            "Work",
+            "redacted@example.com · Acme",
+        ])
+    }
+
+    @Test
     func `dashboard identity flag decodes redacted full and rejects others`() {
         #expect(CodexBarCLI.decodeDashboardIdentityMode(from: self.parsedValues(identity: nil)) == .full)
         #expect(CodexBarCLI.decodeDashboardIdentityMode(from: self.parsedValues(identity: "redacted")) == .redacted)
@@ -295,12 +333,16 @@ struct DashboardClaudeSwapSnapshotTests {
     private func accountRow(
         number: Int,
         email: String,
+        organizationName: String = "",
+        alias: String? = nil,
         active: Bool,
         scoped: [ClaudeSwapScopedUsageWindow] = []) -> ClaudeSwapAccountRow
     {
         ClaudeSwapAccountRow(
             number: number,
             email: email,
+            organizationName: organizationName,
+            alias: alias,
             isActive: active,
             usageStatus: .ok,
             fiveHour: ClaudeSwapUsageWindow(

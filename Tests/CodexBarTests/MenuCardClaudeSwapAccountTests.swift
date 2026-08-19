@@ -47,6 +47,7 @@ struct MenuCardClaudeSwapAccountTests {
             tokenSnapshot: nil,
             tokenError: nil,
             account: AccountInfo(email: account.displayLabel, plan: nil),
+            accountIsAuthoritative: true,
             planOverride: planOverride,
             isRefreshing: false,
             lastError: account.error,
@@ -109,5 +110,58 @@ struct MenuCardClaudeSwapAccountTests {
 
         #expect(!model.email.contains("personal@example.com"))
         #expect(!model.email.contains("example.com"))
+    }
+
+    @Test
+    func `claude swap cards that share an email include the organization name`() throws {
+        let now = Date(timeIntervalSince1970: 1_782_000_000)
+        let metadata = try #require(ProviderDefaults.metadata[.claude])
+        let list = ClaudeSwapAccountList(
+            activeAccountNumber: 1,
+            accounts: [
+                ClaudeSwapAccountRow(
+                    number: 1,
+                    email: "shared@example.com",
+                    organizationName: "Sendbird",
+                    isActive: true,
+                    usageStatus: .ok,
+                    fiveHour: ClaudeSwapUsageWindow(usedPercent: 10, resetsAt: now),
+                    sevenDay: nil),
+                ClaudeSwapAccountRow(
+                    number: 2,
+                    email: "shared@example.com",
+                    organizationName: "Acme",
+                    isActive: false,
+                    usageStatus: .ok,
+                    fiveHour: ClaudeSwapUsageWindow(usedPercent: 20, resetsAt: now),
+                    sevenDay: nil),
+            ])
+        let models = ClaudeSwapAccountProjection.accountSnapshots(from: list, now: now).map { account in
+            UsageMenuCardView.Model.make(.init(
+                provider: .claude,
+                metadata: metadata,
+                snapshot: account.snapshot,
+                credits: nil,
+                creditsError: nil,
+                dashboard: nil,
+                dashboardError: nil,
+                tokenSnapshot: nil,
+                tokenError: nil,
+                account: AccountInfo(email: account.displayLabel, plan: nil),
+                accountIsAuthoritative: true,
+                isRefreshing: false,
+                lastError: account.error,
+                usageBarsShowUsed: true,
+                resetTimeDisplayStyle: .countdown,
+                tokenCostUsageEnabled: false,
+                showOptionalCreditsAndExtraUsage: false,
+                hidePersonalInfo: false,
+                now: now))
+        }
+
+        #expect(models.map(\.email) == [
+            "shared@example.com · Sendbird",
+            "shared@example.com · Acme",
+        ])
     }
 }

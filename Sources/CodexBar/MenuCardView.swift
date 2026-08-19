@@ -1076,10 +1076,13 @@ extension UsageMenuCardView.Model {
         metadata: ProviderMetadata,
         accountIsAuthoritative: Bool) -> String
     {
+        if accountIsAuthoritative, let email = account.email, !email.isEmpty {
+            return email
+        }
         if let email = snapshot?.accountEmail(for: provider), !email.isEmpty {
             return email
         }
-        if metadata.usesAccountFallback || accountIsAuthoritative,
+        if metadata.usesAccountFallback,
            let email = account.email, !email.isEmpty
         {
             return email

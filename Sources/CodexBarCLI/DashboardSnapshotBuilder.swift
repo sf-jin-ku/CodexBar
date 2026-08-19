@@ -176,7 +176,8 @@ enum DashboardSnapshotBuilder {
         weeklyWorkDays: Int?,
         generatedAt: Date) -> DashboardAccountPayload
     {
-        // Provider-specific by design: claude-swap keeps the source email in displayLabel when usage is unavailable.
+        // Provider-specific by design: identity stays the source email; the card label may be an alias
+        // or an "email · org" disambiguation, and redaction rewrites only the email prefix.
         let snapshotEmail = account.snapshot?.identity?.accountEmail
         let email = snapshotEmail?.contains("@") == true
             ? snapshotEmail
@@ -185,11 +186,18 @@ enum DashboardSnapshotBuilder {
             ? self.dashboardEmail(email, mode: identityMode)
             : nil
         let identity = presentedEmail.map { DashboardIdentityPayload(accountEmail: $0, plan: nil) }
+        let trimmedLabel = account.displayLabel.trimmingCharacters(in: .whitespacesAndNewlines)
+        let fallbackLabel = trimmedLabel.isEmpty ? "Account \(account.id.opaqueID)" : trimmedLabel
+        let label = self.claudeSwapDashboardLabel(
+            displayLabel: fallbackLabel,
+            sourceEmail: email,
+            presentedEmail: presentedEmail,
+            accountID: account.id.opaqueID)
         // Provider-specific by design: claude-swap account windows and pace use Claude's presentation semantics.
         let metadata = ProviderDescriptorRegistry.descriptor(for: UsageProvider.claude).metadata
         return DashboardAccountPayload(
             id: "\(account.id.source):\(account.id.opaqueID)",
-            label: presentedEmail ?? "Account \(account.id.opaqueID)",
+            label: label,
             active: account.isActive,
             identity: identity,
             windows: self.makeWindows(provider: .claude, metadata: metadata, usage: account.snapshot),
@@ -202,6 +210,24 @@ enum DashboardSnapshotBuilder {
             },
             error: account.error,
             updatedAt: account.snapshot?.updatedAt)
+    }
+
+    private static func claudeSwapDashboardLabel(
+        displayLabel: String,
+        sourceEmail: String?,
+        presentedEmail: String?,
+        accountID: String) -> String
+    {
+        if let presentedEmail {
+            guard displayLabel.contains("@"),
+                  let sourceEmail,
+                  displayLabel == sourceEmail || displayLabel.hasPrefix(sourceEmail)
+            else {
+                return displayLabel
+            }
+            return presentedEmail + String(displayLabel.dropFirst(sourceEmail.count))
+        }
+        return displayLabel.contains("@") ? "Account \(accountID)" : displayLabel
     }
 
     private static func dashboardSource(from source: String) -> String {

@@ -23,11 +23,13 @@ public enum ClaudeSwapAccountProjection {
             }
             return lhs.number < rhs.number
         }
+        let duplicateEmails = self.duplicateEmails(in: ordered)
         return ordered.map { row in
-            ProviderAccountUsageSnapshot(
+            let label = self.displayLabel(for: row, duplicateEmails: duplicateEmails)
+            return ProviderAccountUsageSnapshot(
                 id: ProviderAccountIdentity(source: self.sourceName, opaqueID: String(row.number)),
                 provider: .claude,
-                displayLabel: self.displayLabel(for: row),
+                displayLabel: label,
                 isActive: row.isActive,
                 canActivate: !row.isActive && self.canActivate(row),
                 snapshot: self.usageSnapshot(for: row, now: now),
@@ -46,8 +48,32 @@ public enum ClaudeSwapAccountProjection {
             ?? adapterError.map { "Showing the last successful update: \($0)" }
     }
 
-    static func displayLabel(for row: ClaudeSwapAccountRow) -> String {
-        row.email.isEmpty ? "Account \(row.number)" : row.email
+    static func displayLabel(for row: ClaudeSwapAccountRow, duplicateEmails: Set<String> = []) -> String {
+        if let alias = row.alias, !alias.isEmpty {
+            return alias
+        }
+        if row.email.isEmpty {
+            return "Account \(row.number)"
+        }
+        guard duplicateEmails.contains(row.email) else {
+            return row.email
+        }
+        if !row.organizationName.isEmpty {
+            return "\(row.email) · \(row.organizationName)"
+        }
+        return "\(row.email) · Account \(row.number)"
+    }
+
+    private static func duplicateEmails(in rows: [ClaudeSwapAccountRow]) -> Set<String> {
+        var counts: [String: Int] = [:]
+        for email in rows.map(\.email) where !email.isEmpty {
+            counts[email, default: 0] += 1
+        }
+        return Set(counts.compactMap { $0.value > 1 ? $0.key : nil })
+    }
+
+    private static func accountOrganization(for row: ClaudeSwapAccountRow) -> String? {
+        row.organizationName.isEmpty ? nil : row.organizationName
     }
 
     private static func usageSnapshot(for row: ClaudeSwapAccountRow, now: Date) -> UsageSnapshot? {
@@ -75,8 +101,8 @@ public enum ClaudeSwapAccountProjection {
             updatedAt: now,
             identity: ProviderIdentitySnapshot(
                 providerID: .claude,
-                accountEmail: self.displayLabel(for: row),
-                accountOrganization: nil,
+                accountEmail: row.email.isEmpty ? nil : row.email,
+                accountOrganization: self.accountOrganization(for: row),
                 loginMethod: self.sourceLabel))
     }
 
