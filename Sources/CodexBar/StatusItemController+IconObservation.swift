@@ -54,6 +54,12 @@ extension StatusItemController {
         let layoutPaceSignature = showBrandPercent
             ? self.storedMenuBarLayoutPaceSignature(for: provider, snapshot: snapshot)
             : nil
+        let layoutBalanceSignature = showBrandPercent
+            ? self.storedMenuBarLayoutBalanceSignature(for: provider, snapshot: snapshot)
+            : nil
+        let layoutLaneSignature = showBrandPercent
+            ? self.storedMenuBarLayoutLaneSignature(for: provider, snapshot: snapshot)
+            : nil
 
         return [
             provider.rawValue,
@@ -71,6 +77,8 @@ extension StatusItemController {
             "layoutCost=\(layoutCostSignature ?? "nil")",
             "layoutAccount=\(layoutAccountSignature ?? "nil")",
             "layoutPace=\(layoutPaceSignature ?? "nil")",
+            "layoutBalance=\(layoutBalanceSignature ?? "nil")",
+            "layoutLanes=\(layoutLaneSignature ?? "nil")",
         ].joined(separator: "|")
     }
 
@@ -81,8 +89,9 @@ extension StatusItemController {
     {
         let resolution = self.settings.menuBarLayoutResolution(for: provider)
         guard !resolution.usesLegacyRendering,
-              resolution.layout.lines.joined().contains(.accountLabel),
-              let accountLabel = self.menuBarLayoutAccountLabel(provider: provider, snapshot: snapshot)
+              resolution.layout.flattenedTokens(conditionals: self.settings.menuBarLayoutConditionals)
+                  .contains(.accountLabel),
+                  let accountLabel = self.menuBarLayoutAccountLabel(provider: provider, snapshot: snapshot)
         else { return nil }
 
         var hasher = Hasher()
@@ -94,7 +103,7 @@ extension StatusItemController {
         let resolution = self.settings.menuBarLayoutResolution(for: provider)
         guard !resolution.usesLegacyRendering else { return nil }
 
-        let tokens = resolution.layout.lines.joined()
+        let tokens = resolution.layout.flattenedTokens(conditionals: self.settings.menuBarLayoutConditionals)
         let showsToday = tokens.contains(.costToday)
         let showsLast30Days = tokens.contains(.cost30d)
         guard showsToday || showsLast30Days else { return nil }
@@ -104,6 +113,19 @@ extension StatusItemController {
             "today=\(showsToday ? costs.today ?? "nil" : "unused")",
             "last30Days=\(showsLast30Days ? costs.last30Days ?? "nil" : "unused")",
         ].joined(separator: ",")
+    }
+
+    private func storedMenuBarLayoutBalanceSignature(
+        for provider: UsageProvider,
+        snapshot: UsageSnapshot?)
+        -> String?
+    {
+        let resolution = self.settings.menuBarLayoutResolution(for: provider)
+        guard !resolution.usesLegacyRendering,
+              resolution.layout.flattenedTokens(conditionals: self.settings.menuBarLayoutConditionals)
+                  .contains(.balance)
+        else { return nil }
+        return MenuBarLayoutBalanceResolver.balance(provider: provider, snapshot: snapshot)
     }
 
     /// Pace tokens change with the historical dataset, the work-day setting, and the clock — none of
@@ -118,10 +140,12 @@ extension StatusItemController {
         let resolution = self.settings.menuBarLayoutResolution(for: provider)
         guard !resolution.usesLegacyRendering else { return nil }
 
-        let paceWindows = Set(resolution.layout.lines.joined().compactMap { token -> PercentWindow? in
-            guard case let .pace(window) = token else { return nil }
-            return window
-        })
+        let paceWindows = Set(resolution.layout
+            .flattenedTokens(conditionals: self.settings.menuBarLayoutConditionals)
+            .compactMap { token -> PercentWindow? in
+                guard case let .pace(window) = token else { return nil }
+                return window
+            })
         guard !paceWindows.isEmpty else { return nil }
 
         let windows = self.menuBarLayoutWindows(provider: provider, snapshot: snapshot, now: Date())
@@ -134,8 +158,42 @@ extension StatusItemController {
                 case .scopedWeekly: nil
                 case .automatic: windows.automatic
                 }
-                let pace = self.store.menuBarLayoutPaceText(provider: provider, window: window)
+                let pace = self.store.menuBarLayoutPaceText(
+                    provider: provider,
+                    window: window,
+                    minimumElapsedPercent: percentWindow == .weekly ? 1 : nil)
                 return "\(percentWindow.rawValue)=\(pace ?? "nil")"
+            }
+            .joined(separator: ",")
+    }
+
+    /// Direct lane tokens read `snapshot.tertiary` independently of the legacy icon percent
+    /// resolver. Without this contribution a Third Party (or equivalent) lane can move while the
+    /// observation signature stays put, so the custom token keeps a stale percent until an
+    /// unrelated icon change forces a redraw.
+    private func storedMenuBarLayoutLaneSignature(
+        for provider: UsageProvider,
+        snapshot: UsageSnapshot?)
+        -> String?
+    {
+        let resolution = self.settings.menuBarLayoutResolution(for: provider)
+        guard !resolution.usesLegacyRendering else { return nil }
+
+        let lanes = resolution.layout.selectedLanes
+        guard !lanes.isEmpty else { return nil }
+
+        let windows = self.menuBarLayoutWindows(provider: provider, snapshot: snapshot, now: Date())
+        let showUsed = self.settings.usageBarsShowUsed
+        return MenuBarLayoutLane.allCases
+            .filter(lanes.contains)
+            .map { lane in
+                let window: RateWindow? = switch lane {
+                case .primary: windows.primary
+                case .secondary: windows.secondary
+                case .tertiary: windows.tertiary
+                }
+                let percent = showUsed ? window?.usedPercent : window?.remainingPercent
+                return "\(lane.rawValue)=\(Self.iconSignatureValue(percent))"
             }
             .joined(separator: ",")
     }
