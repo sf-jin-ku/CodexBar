@@ -142,13 +142,17 @@ public struct KiroUsageSnapshot: Sendable {
         if let overagesStatus = self.overagesStatus {
             detailRows.append(.makeRow(label: "Overages", value: overagesStatus))
         }
-        // The API states the overage cap directly. The CLI omits the whole overage section for
+        // The API states whether overage is enabled. The CLI omits the whole overage section for
         // organization accounts, so its status line is only consulted when the API is unavailable.
         let overageCap = self.usageLimits?.overageCap
-        let overagesEnabled = overageCap != nil || self.overagesStatus?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased()
-            .hasPrefix("enabled") == true
+        let overagesEnabled = if self.usageLimits != nil {
+            overageCap != nil
+        } else {
+            self.overagesStatus?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased()
+                .hasPrefix("enabled") == true
+        }
         if overagesEnabled, let overageCreditsUsed = self.overageCreditsUsed {
             detailRows.append(.makeRow(
                 label: "Overage usage",

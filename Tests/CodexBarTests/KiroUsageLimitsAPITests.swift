@@ -36,6 +36,17 @@ struct KiroUsageLimitsAPITests {
     }
 
     @Test
+    func `rejects overage that exceeds total usage`() throws {
+        let json = Self.overageInUseResponse
+            .replacingOccurrences(
+                of: "\"currentUsageWithPrecision\":13603.49",
+                with: "\"currentUsageWithPrecision\":100")
+        #expect(throws: KiroUsageLimitsError.self) {
+            try KiroUsageLimitsAPI.parse(Data(json.utf8))
+        }
+    }
+
+    @Test
     func `treats overage as unavailable when the account has it disabled`() throws {
         let json = Self.overageInUseResponse
             .replacingOccurrences(of: "\"overageStatus\":\"ENABLED\"", with: "\"overageStatus\":\"DISABLED\"")
@@ -120,6 +131,30 @@ struct KiroUsageLimitsAPITests {
         #expect(cliReport.creditsTotal == 50)
         #expect(snapshot.extraRateWindows == nil)
         #expect(snapshot.providerCost == nil)
+    }
+
+    @Test
+    func `api disabled overage wins over a stale cli enabled status`() throws {
+        let limits = try KiroUsageLimitsAPI.parse(Data(
+            Self.overageInUseResponse
+                .replacingOccurrences(of: "\"overageStatus\":\"ENABLED\"", with: "\"overageStatus\":\"DISABLED\"")
+                .utf8))
+        let probe = KiroStatusProbe()
+        let cliReport = try probe.parse(output: """
+        Estimated Usage | resets on 2026-09-01 | KIRO POWER
+        Credits (10000.00 of 10000 covered in plan)
+        ████████████████████████████████████████████████████████████████████████████████ 100%
+        Overages: Enabled billed at $0.04 per request
+        """)
+        let snapshot = cliReport.withUsageLimits(limits).toUsageSnapshot()
+        let rows = snapshot.details.flatMap(\.rows)
+
+        #expect(limits.overageCap == nil)
+        #expect(snapshot.extraRateWindows == nil)
+        #expect(snapshot.providerCost == nil)
+        #expect(rows.contains { $0.label == "Overages" && $0.value.hasPrefix("Enabled") })
+        #expect(rows.contains { $0.label == "Overage usage" } == false)
+        #expect(rows.contains { $0.label == "Overage credits left" } == false)
     }
 
     @Test

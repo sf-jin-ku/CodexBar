@@ -155,8 +155,12 @@ public enum KiroUsageLimitsAPI: Sendable {
         let overageUsed = try self.usableCredits(
             credit.currentOveragesWithPrecision ?? 0,
             field: "overage usage")
-        // `currentUsage` is the total including overage, so the plan portion is the remainder.
-        let planUsed = max(0, totalUsed - overageUsed)
+        // `currentUsage` is the total including overage. An overage larger than that total is
+        // relationally impossible, and clamping it to zero would overwrite valid CLI plan usage.
+        guard totalUsed >= overageUsed else {
+            throw KiroUsageLimitsError.parseError("overage exceeds total usage")
+        }
+        let planUsed = totalUsed - overageUsed
 
         let overageIsEnabled = response.overageConfiguration?.overageStatus == self.overageEnabled
         let overageCap: Double? = if overageIsEnabled, let cap = credit.overageCapWithPrecision {
