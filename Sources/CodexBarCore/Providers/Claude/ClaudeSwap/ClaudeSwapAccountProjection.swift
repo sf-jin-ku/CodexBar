@@ -33,7 +33,7 @@ public enum ClaudeSwapAccountProjection {
             let id = ProviderAccountIdentity(source: self.sourceName, opaqueID: String(row.number))
             let snapshot = self.usageSnapshot(
                 for: row,
-                previous: previousByID[id]?.snapshot,
+                previous: previousByID[id],
                 now: now)
             return ProviderAccountUsageSnapshot(
                 id: id,
@@ -63,14 +63,43 @@ public enum ClaudeSwapAccountProjection {
 
     private static func usageSnapshot(
         for row: ClaudeSwapAccountRow,
-        previous: UsageSnapshot?,
+        previous: ProviderAccountUsageSnapshot?,
         now: Date) -> UsageSnapshot?
     {
-        if let projected = self.projectedUsageSnapshot(for: row, now: now) {
-            return projected
+        switch row.usageStatus {
+        case .ok, .unavailable:
+            if let projected = self.projectedUsageSnapshot(for: row, now: now) {
+                return projected
+            }
+            guard row.usageStatus == .unavailable else { return nil }
+            return self.retainedAtLimitSnapshot(previous, matching: row, now: now)
+        case .tokenExpired, .reloginRequired, .apiKey, .keychainUnavailable, .noCredentials, .unknown:
+            return nil
         }
-        guard row.usageStatus == .unavailable else { return nil }
-        return previous
+    }
+
+    private static func retainedAtLimitSnapshot(
+        _ previous: ProviderAccountUsageSnapshot?,
+        matching row: ClaudeSwapAccountRow,
+        now: Date) -> UsageSnapshot?
+    {
+        guard let previous, let snapshot = previous.snapshot else { return nil }
+        let previousEmail = previous.snapshot?.identity?.accountEmail ?? previous.displayLabel
+        let rowEmail = self.displayLabel(for: row)
+        if !previousEmail.isEmpty, !rowEmail.isEmpty, previousEmail != rowEmail {
+            return nil
+        }
+        guard self.hasApplicableExhaustedWindow(snapshot, now: now) else { return nil }
+        return snapshot
+    }
+
+    private static func hasApplicableExhaustedWindow(_ snapshot: UsageSnapshot, now: Date) -> Bool {
+        let windows = [snapshot.primary, snapshot.secondary].compactMap(\.self)
+            + (snapshot.extraRateWindows ?? []).map(\.window)
+        return windows.contains { window in
+            window.usedPercent >= self.exhaustedUsedPercent
+                && (window.resetsAt.map { $0 > now } ?? true)
+        }
     }
 
     private static func projectedUsageSnapshot(for row: ClaudeSwapAccountRow, now: Date) -> UsageSnapshot? {

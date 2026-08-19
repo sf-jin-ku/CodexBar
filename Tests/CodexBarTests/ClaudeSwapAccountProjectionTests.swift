@@ -257,6 +257,99 @@ struct ClaudeSwapAccountProjectionTests {
     }
 
     @Test
+    func `token expired with cached windows stays metrics less`() throws {
+        let list = ClaudeSwapAccountList(
+            activeAccountNumber: 1,
+            accounts: [
+                ClaudeSwapAccountRow(
+                    number: 1,
+                    email: "a@b.c",
+                    isActive: true,
+                    usageStatus: .tokenExpired,
+                    fiveHour: ClaudeSwapUsageWindow(usedPercent: 100, resetsAt: nil),
+                    sevenDay: ClaudeSwapUsageWindow(usedPercent: 80, resetsAt: nil)),
+            ])
+
+        let account = try #require(ClaudeSwapAccountProjection.accountSnapshots(from: list, now: self.now).first)
+        #expect(account.snapshot == nil)
+        #expect(account.error?.contains("Token expired") == true)
+    }
+
+    @Test
+    func `unavailable does not reuse a previous snapshot from a different email`() throws {
+        let reset = Date(timeIntervalSince1970: 1_782_259_200)
+        let previous = ClaudeSwapAccountProjection.accountSnapshots(
+            from: ClaudeSwapAccountList(
+                activeAccountNumber: 1,
+                accounts: [
+                    ClaudeSwapAccountRow(
+                        number: 1,
+                        email: "old@example.com",
+                        isActive: true,
+                        usageStatus: .ok,
+                        fiveHour: ClaudeSwapUsageWindow(usedPercent: 100, resetsAt: reset),
+                        sevenDay: nil),
+                ]),
+            now: self.now)
+        let list = ClaudeSwapAccountList(
+            activeAccountNumber: 1,
+            accounts: [
+                ClaudeSwapAccountRow(
+                    number: 1,
+                    email: "new@example.com",
+                    isActive: true,
+                    usageStatus: .unavailable,
+                    fiveHour: nil,
+                    sevenDay: nil),
+            ])
+
+        let account = try #require(
+            ClaudeSwapAccountProjection.accountSnapshots(
+                from: list,
+                previousAccounts: previous,
+                now: self.now).first)
+        #expect(account.displayLabel == "new@example.com")
+        #expect(account.snapshot == nil)
+        #expect(account.error == "Polling deferred until a limit resets.")
+    }
+
+    @Test
+    func `unavailable does not retain a previous snapshot that is not at a limit`() throws {
+        let previous = ClaudeSwapAccountProjection.accountSnapshots(
+            from: ClaudeSwapAccountList(
+                activeAccountNumber: 1,
+                accounts: [
+                    ClaudeSwapAccountRow(
+                        number: 1,
+                        email: "a@b.c",
+                        isActive: true,
+                        usageStatus: .ok,
+                        fiveHour: ClaudeSwapUsageWindow(usedPercent: 20, resetsAt: nil),
+                        sevenDay: nil),
+                ]),
+            now: self.now)
+        let list = ClaudeSwapAccountList(
+            activeAccountNumber: 1,
+            accounts: [
+                ClaudeSwapAccountRow(
+                    number: 1,
+                    email: "a@b.c",
+                    isActive: true,
+                    usageStatus: .unavailable,
+                    fiveHour: nil,
+                    sevenDay: nil),
+            ])
+
+        let account = try #require(
+            ClaudeSwapAccountProjection.accountSnapshots(
+                from: list,
+                previousAccounts: previous,
+                now: self.now).first)
+        #expect(account.snapshot == nil)
+        #expect(account.error == "Polling deferred until a limit resets.")
+    }
+
+    @Test
     func `ok row without windows reports missing usage instead of an empty card`() throws {
         let list = ClaudeSwapAccountList(
             activeAccountNumber: 1,
