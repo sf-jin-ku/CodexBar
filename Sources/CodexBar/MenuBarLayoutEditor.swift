@@ -43,6 +43,10 @@ struct MenuBarLayoutDragItem: Codable, Hashable, Transferable, Sendable {
     static let lineBreak = Self(content: .lineBreak, source: nil, sourceLayout: nil)
 }
 
+enum MenuBarLayoutPaletteTokens {
+    static let time: [MenuBarLayoutToken] = [.resetCountdown, .resetAbsolute, .runsOut, .runsOutCompact]
+}
+
 enum MenuBarLayoutEditorMutations {
     static func append(_ component: MenuBarLayoutToken, to layout: MenuBarLayout) -> MenuBarLayout {
         var lines = layout.lines
@@ -175,6 +179,7 @@ struct MenuBarLayoutEditor: View {
 
     @State private var scope: MenuBarLayoutEditorScope = .all
     @State private var selectedPosition: MenuBarLayoutPosition?
+    @State private var conditionalDraft: MenuBarLayoutConditionalDraft?
 
     private var layout: MenuBarLayout {
         switch self.scope {
@@ -205,6 +210,10 @@ struct MenuBarLayoutEditor: View {
         case .all: nil
         case let .provider(provider): provider
         }
+    }
+
+    private var persistenceSnapshot: UsageSnapshot? {
+        self.persistenceProvider.flatMap { self.store.snapshot(for: $0.instanceID) }
     }
 
     private var sizeBinding: Binding<MenuBarLayoutSize> {
@@ -245,6 +254,7 @@ struct MenuBarLayoutEditor: View {
                     .percent(window: .session),
                     .percent(window: .weekly),
                     .percent(window: .scopedWeekly),
+                ] + self.providerLaneTokens + [
                     .percent(window: .automatic),
                     .usageBar,
                     .pace(window: .session),
@@ -255,12 +265,12 @@ struct MenuBarLayoutEditor: View {
             MenuBarLayoutPaletteGroup(
                 id: "time",
                 title: L("menu_bar_layout_group_time"),
-                tokens: [.resetCountdown, .resetAbsolute, .runsOut],
+                tokens: MenuBarLayoutPaletteTokens.time,
                 includesLineBreak: false),
             MenuBarLayoutPaletteGroup(
                 id: "money",
                 title: L("menu_bar_layout_group_money"),
-                tokens: [.costToday, .cost30d],
+                tokens: [.balance, .costToday, .cost30d],
                 includesLineBreak: false),
             MenuBarLayoutPaletteGroup(
                 id: "structure",
@@ -268,6 +278,11 @@ struct MenuBarLayoutEditor: View {
                 tokens: [.separatorDot, .space],
                 includesLineBreak: true),
         ]
+    }
+
+    private var providerLaneTokens: [MenuBarLayoutToken] {
+        MenuBarLayoutLane.available(for: self.persistenceProvider, snapshot: self.persistenceSnapshot)
+            .map { .lanePercent(lane: $0) }
     }
 
     var body: some View {
@@ -283,6 +298,8 @@ struct MenuBarLayoutEditor: View {
                 self.palette(group)
             }
 
+            self.conditionalsPalette
+
             Divider()
 
             self.displayOptions
@@ -291,6 +308,17 @@ struct MenuBarLayoutEditor: View {
         .onDeleteCommand {
             self.removeSelectedToken()
         }
+        .sheet(item: self.$conditionalDraft) { draft in
+            MenuBarLayoutConditionalEditorSheet(
+                draft: draft,
+                provider: self.persistenceProvider,
+                existingNames: Set(
+                    self.settings.menuBarLayoutConditionals.map {
+                        $0.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                    }),
+                onSave: self.saveConditionalDraft)
+        }
+
         .onChange(of: self.scope) { _, _ in
             self.selectedPosition = nil
         }
@@ -409,9 +437,10 @@ struct MenuBarLayoutEditor: View {
                         self.selectedPosition = position
                     } label: {
                         MenuBarLayoutChipLabel(
-                            title: token.editorLabel(provider: self.persistenceProvider),
+                            title: self.chipTitle(for: token),
                             systemImage: token.editorSystemImage,
                             isSelected: self.selectedPosition == position)
+                            .draggable(MenuBarLayoutDragItem.placed(token, at: position, in: self.layout))
                     }
                     .buttonStyle(.plain)
                     .focusable()
@@ -419,11 +448,22 @@ struct MenuBarLayoutEditor: View {
                         self.selectedPosition = position
                         return .handled
                     }
-                    .draggable(MenuBarLayoutDragItem.placed(token, at: position, in: self.layout))
                     .dropDestination(for: MenuBarLayoutDragItem.self) { items, _ in
                         self.insert(items.first, at: position)
                     }
-                    .accessibilityLabel(token.editorAccessibilityLabel(provider: self.persistenceProvider))
+                    .accessibilityLabel(self.chipAccessibilityLabel(for: token))
+                    .contextMenu {
+                        if case let .conditional(id) = token,
+                           let conditional = self.settings.menuBarLayoutConditionals
+                               .first(where: { $0.id == id })
+                        {
+                            Button(L("menu_bar_layout_conditional_edit")) {
+                                self.conditionalDraft = MenuBarLayoutConditionalDraft(
+                                    mode: .edit(id),
+                                    conditional: conditional)
+                            }
+                        }
+                    }
                     .accessibilityHint(L("menu_bar_layout_chip_hint"))
                     .accessibilityAction(named: L("Remove")) {
                         self.remove(at: position)
@@ -494,7 +534,9 @@ struct MenuBarLayoutEditor: View {
                         self.write(MenuBarLayoutEditorMutations.append(token, to: self.layout))
                     } label: {
                         MenuBarLayoutChipLabel(
-                            title: token.editorLabel(provider: self.persistenceProvider),
+                            title: token.editorLabel(
+                                provider: self.persistenceProvider,
+                                snapshot: self.persistenceSnapshot),
                             systemImage: token.editorSystemImage,
                             isSelected: false)
                     }
@@ -505,7 +547,9 @@ struct MenuBarLayoutEditor: View {
                         return .handled
                     }
                     .draggable(MenuBarLayoutDragItem.palette(token))
-                    .accessibilityLabel(token.editorAccessibilityLabel(provider: self.persistenceProvider))
+                    .accessibilityLabel(token.editorAccessibilityLabel(
+                        provider: self.persistenceProvider,
+                        snapshot: self.persistenceSnapshot))
                     .accessibilityHint(L("menu_bar_layout_palette_hint"))
                 }
                 if group.includesLineBreak {
@@ -532,6 +576,89 @@ struct MenuBarLayoutEditor: View {
         }
     }
 
+    private var conditionalsPalette: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text(L("menu_bar_layout_group_conditionals"))
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button {
+                    self.conditionalDraft = MenuBarLayoutConditionalDraft(
+                        mode: .create,
+                        conditional: .makeDefault())
+                } label: {
+                    Image(systemName: "plus.circle")
+                }
+                .buttonStyle(.plain)
+                .help(L("menu_bar_layout_conditional_add"))
+                .accessibilityLabel(L("menu_bar_layout_conditional_add"))
+            }
+
+            if self.settings.menuBarLayoutConditionals.isEmpty {
+                Text(L("menu_bar_layout_conditional_none"))
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            } else {
+                MenuBarLayoutChipFlowLayout(spacing: 6) {
+                    ForEach(self.settings.menuBarLayoutConditionals, id: \.id) { conditional in
+                        self.conditionalPaletteChip(conditional: conditional)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+    }
+
+    private func conditionalPaletteChip(
+        conditional: MenuBarLayoutConditional)
+        -> some View
+    {
+        Button {
+            self.write(MenuBarLayoutEditorMutations.append(.conditional(id: conditional.id), to: self.layout))
+        } label: {
+            MenuBarLayoutChipLabel(
+                title: conditional.displayName,
+                systemImage: "switch.2",
+                isSelected: false)
+        }
+        .buttonStyle(.plain)
+        .draggable(MenuBarLayoutDragItem.palette(.conditional(id: conditional.id)))
+        .focusable()
+        .onKeyPress(keys: [.space, .return], phases: [.down]) { _ in
+            self.write(MenuBarLayoutEditorMutations.append(.conditional(id: conditional.id), to: self.layout))
+            return .handled
+        }
+        .accessibilityLabel(conditional.displayName)
+        .contextMenu {
+            Button(L("menu_bar_layout_conditional_edit")) {
+                self.conditionalDraft = MenuBarLayoutConditionalDraft(
+                    mode: .edit(conditional.id),
+                    conditional: conditional)
+            }
+            Button(L("menu_bar_layout_conditional_duplicate")) {
+                self.duplicateConditional(conditional)
+            }
+            Button(L("menu_bar_layout_conditional_remove"), role: .destructive) {
+                self.settings.removeMenuBarLayoutConditional(id: conditional.id)
+            }
+        }
+    }
+
+    private func duplicateConditional(_ conditional: MenuBarLayoutConditional) {
+        let existingNames = Set(self.settings.menuBarLayoutConditionals.map { $0.name.lowercased() })
+        let copyName = MenuBarLayoutConditional.uniqueCopyName(
+            basedOn: conditional.name,
+            existingNames: existingNames)
+        let copy = MenuBarLayoutConditional(
+            name: copyName,
+            clauses: conditional.clauses,
+            thenToken: conditional.thenToken,
+            elseToken: conditional.elseToken)
+        self.settings.menuBarLayoutConditionals.append(copy)
+    }
+
     private var displayOptions: some View {
         HStack(spacing: 18) {
             Picker(L("menu_bar_layout_size"), selection: self.sizeBinding) {
@@ -547,6 +674,27 @@ struct MenuBarLayoutEditor: View {
                 }
             }
             .pickerStyle(.menu)
+
+            HStack(spacing: 8) {
+                Text(L("menu_bar_layout_vertical_adjustment"))
+                    .lineLimit(1)
+                    .fixedSize()
+
+                TextField(
+                    "",
+                    value: self.$settings.menuBarLayoutVerticalAdjustment,
+                    format: .number)
+                    .labelsHidden()
+                    .textFieldStyle(.roundedBorder)
+                    .multilineTextAlignment(.trailing)
+                    .monospacedDigit()
+                    .frame(width: 44)
+
+                Stepper(value: self.$settings.menuBarLayoutVerticalAdjustment, in: -20...20, step: 1) {
+                    EmptyView()
+                }
+                .labelsHidden()
+            }
 
             Spacer()
 
@@ -583,6 +731,35 @@ struct MenuBarLayoutEditor: View {
         self.selectedPosition = nil
     }
 
+    private func saveConditionalDraft(_ draft: MenuBarLayoutConditionalDraft) {
+        switch draft.mode {
+        case .create:
+            self.settings.menuBarLayoutConditionals.append(draft.conditional)
+        case let .edit(id):
+            guard let index = self.settings.menuBarLayoutConditionals.firstIndex(where: { $0.id == id })
+            else { return }
+            self.settings.menuBarLayoutConditionals[index] = draft.conditional
+        }
+    }
+
+    private func chipTitle(for token: MenuBarLayoutToken) -> String {
+        if case let .conditional(id) = token {
+            return self.settings.menuBarLayoutConditionals
+                .first(where: { $0.id == id })?.displayName
+                ?? L("menu_bar_layout_token_conditional")
+        }
+        return token.editorLabel(provider: self.persistenceProvider, snapshot: self.persistenceSnapshot)
+    }
+
+    private func chipAccessibilityLabel(for token: MenuBarLayoutToken) -> String {
+        if case .conditional = token {
+            return self.chipTitle(for: token)
+        }
+        return token.editorAccessibilityLabel(
+            provider: self.persistenceProvider,
+            snapshot: self.persistenceSnapshot)
+    }
+
     private func write(_ layout: MenuBarLayout) {
         MenuBarLayoutEditorPersistence.activate(
             layout,
@@ -591,7 +768,7 @@ struct MenuBarLayoutEditor: View {
     }
 }
 
-private struct MenuBarLayoutChipLabel: View {
+struct MenuBarLayoutChipLabel: View {
     let title: String
     let systemImage: String
     let isSelected: Bool
@@ -613,6 +790,76 @@ private struct MenuBarLayoutChipLabel: View {
         .overlay(
             Capsule(style: .continuous)
                 .stroke(self.isSelected ? Color.clear : Color.secondary.opacity(0.2), lineWidth: 1))
+    }
+}
+
+/// Left-aligned wrapping row layout for palette chips.
+///
+/// The conditionals palette holds user-named chips of widely varying width. An adaptive
+/// `LazyVGrid` would size them into equal columns and spread the leftover pane width between
+/// them, and a plain `HStack` would push later chips outside the settings pane; this places each
+/// chip at its natural width and wraps to the next row.
+struct MenuBarLayoutChipFlowLayout: Layout {
+    var spacing: CGFloat = 6
+
+    /// Pure packing rule: subview indices grouped into rows that each stay within `maxWidth`.
+    /// Kept separate from `Layout` so the wrapping contract is testable without faking subviews.
+    /// A chip wider than `maxWidth` still occupies its own row rather than being dropped.
+    static func rows(widths: [CGFloat], maxWidth: CGFloat, spacing: CGFloat) -> [[Int]] {
+        var rows: [[Int]] = []
+        var current: [Int] = []
+        var currentWidth: CGFloat = 0
+        for (index, width) in widths.enumerated() {
+            let advance = current.isEmpty ? width : spacing + width
+            if !current.isEmpty, currentWidth + advance > maxWidth {
+                rows.append(current)
+                current = [index]
+                currentWidth = width
+                continue
+            }
+            current.append(index)
+            currentWidth += advance
+        }
+        if !current.isEmpty {
+            rows.append(current)
+        }
+        return rows
+    }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let sizes = subviews.map { $0.sizeThatFits(.unspecified) }
+        let rows = Self.rows(
+            widths: sizes.map(\.width),
+            maxWidth: proposal.width ?? .infinity,
+            spacing: self.spacing)
+        let rowWidths = rows.map { row in
+            row.reduce(CGFloat.zero) { $0 + sizes[$1].width }
+                + CGFloat(max(0, row.count - 1)) * self.spacing
+        }
+        let rowHeights = rows.map { row in
+            row.reduce(CGFloat.zero) { max($0, sizes[$1].height) }
+        }
+        return CGSize(
+            width: rowWidths.max() ?? 0,
+            height: rowHeights.reduce(0, +) + CGFloat(max(0, rows.count - 1)) * self.spacing)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let sizes = subviews.map { $0.sizeThatFits(.unspecified) }
+        let rows = Self.rows(widths: sizes.map(\.width), maxWidth: bounds.width, spacing: self.spacing)
+        var y = bounds.minY
+        for row in rows {
+            let rowHeight = row.reduce(CGFloat.zero) { max($0, sizes[$1].height) }
+            var x = bounds.minX
+            for index in row {
+                let size = sizes[index]
+                subviews[index].place(
+                    at: CGPoint(x: x, y: y + (rowHeight - size.height) / 2),
+                    proposal: ProposedViewSize(size))
+                x += size.width + self.spacing
+            }
+            y += rowHeight + self.spacing
+        }
     }
 }
 
@@ -640,9 +887,11 @@ struct MenuBarLayoutPreview: View {
                 size: self.settings.menuBarLayoutSize,
                 highContrast: self.settings.menuBarHighContrastOnInactiveDisplays,
                 showUsed: self.settings.usageBarsShowUsed,
+                conditionals: self.settings.menuBarLayoutConditionals,
                 appearanceName: "preview",
                 isDebugApp: false,
-                now: minute))
+                now: minute,
+                verticalAdjustment: self.settings.menuBarLayoutVerticalAdjustment))
         MenuBarLayoutPreviewText(rendered: rendered)
     }
 
@@ -651,6 +900,9 @@ struct MenuBarLayoutPreview: View {
         let session: RateWindow?
         let weekly: RateWindow?
         let rawAutomatic: RateWindow?
+        let primary: RateWindow?
+        let secondary: RateWindow?
+        let tertiary = snapshot.tertiary
         if provider == .codex,
            let projection = self.store.codexConsumerProjectionIfNeeded(
                for: provider,
@@ -661,19 +913,27 @@ struct MenuBarLayoutPreview: View {
             session = projection.menuBarSelectableRateWindow(for: .session)
             weekly = projection.menuBarSelectableRateWindow(for: .weekly)
             rawAutomatic = projection.automaticMenuBarWindow()
+            primary = session
+            secondary = weekly
         } else {
             let semanticWindows = MenuBarLayoutSemanticWindowResolver.windows(
                 provider: provider,
                 snapshot: snapshot)
             session = semanticWindows.session
             weekly = semanticWindows.weekly
+            // Provider-specific by design: Mistral's automatic lane can explicitly select its Monthly Plan window.
+            let automaticPreference = provider == .mistral
+                ? self.settings.menuBarMetricPreference(for: provider, snapshot: snapshot)
+                : .automatic
             rawAutomatic = MenuBarMetricWindowResolver.rateWindow(
-                preference: .automatic,
+                preference: automaticPreference,
                 provider: provider,
                 snapshot: snapshot,
                 supportsAverage: self.settings.menuBarMetricSupportsAverage(for: provider),
                 antigravityPrioritizeExhaustedQuotas: self.settings.antigravityPrioritizeExhaustedQuotas,
                 now: now)
+            primary = snapshot.primary
+            secondary = snapshot.secondary
         }
         let automatic = MenuBarLayoutAutomaticWindowDisplayNormalizer.normalized(
             provider: provider,
@@ -682,24 +942,43 @@ struct MenuBarLayoutPreview: View {
         let scopedNamed = MenuBarLayoutSemanticWindowResolver.scopedWeeklyNamedWindow(snapshot: snapshot)
         let paceWindow = weekly ?? automatic
         let runsOut = paceWindow
-            .flatMap { self.store.weeklyPace(provider: provider, window: $0, now: now) }
+            .flatMap {
+                self.store.weeklyPace(
+                    provider: provider,
+                    window: $0,
+                    now: now)
+            }
             .flatMap { UsagePaceText.weeklyDetail(provider: provider, pace: $0, now: now).rightLabel }
         let cost = self.store.tokenSnapshotForCurrentProviderConfig(for: provider)?.snapshot
         let costToday = MenuBarLayoutCostResolver.todayCostUSD(snapshot: cost, now: now)
+        let automaticRenderWindow = MenuBarLayoutRenderWindow(automatic)
         return MenuBarLayoutRenderData(
             provider: provider,
             iconKey: provider.rawValue,
             providerName: L(self.store.metadata(for: provider).displayName),
             accountLabel: self.settings.hidePersonalInfo ? nil : snapshot.accountEmail(for: provider),
+            laneLabels: MenuBarLayoutLaneLabels(provider: provider, snapshot: snapshot),
+            primary: MenuBarLayoutRenderWindow(primary),
+            secondary: MenuBarLayoutRenderWindow(secondary),
+            tertiary: MenuBarLayoutRenderWindow(tertiary),
             session: MenuBarLayoutRenderWindow(session),
             weekly: MenuBarLayoutRenderWindow(weekly),
             scopedWeekly: MenuBarLayoutRenderWindow(scopedNamed?.window),
             scopedWeeklyTitle: scopedNamed?.title,
-            automatic: MenuBarLayoutRenderWindow(automatic),
+            automatic: automaticRenderWindow,
+            // Provider-specific by design: Mistral uses spend text when its automatic lane has no percentage window.
+            automaticText: provider == .mistral && automaticRenderWindow == nil
+                ? StatusItemController.mistralSpendDisplayText(snapshot: snapshot)
+                : nil,
             sessionPace: self.store.menuBarLayoutPaceText(provider: provider, window: session, now: now),
-            weeklyPace: self.store.menuBarLayoutPaceText(provider: provider, window: weekly, now: now),
+            weeklyPace: self.store.menuBarLayoutPaceText(
+                provider: provider,
+                window: weekly,
+                now: now,
+                minimumElapsedPercent: 1),
             automaticPace: self.store.menuBarLayoutPaceText(provider: provider, window: automatic, now: now),
             runsOut: runsOut,
+            balance: MenuBarLayoutBalanceResolver.balance(provider: provider, snapshot: snapshot),
             costToday: costToday.map {
                 UsageFormatter.currencyString($0, currencyCode: cost?.currencyCode ?? "USD")
             },
@@ -735,15 +1014,22 @@ struct MenuBarLayoutPreview: View {
             iconKey: "\(provider.rawValue)-representative",
             providerName: L(self.store.metadata(for: provider).displayName),
             accountLabel: self.settings.hidePersonalInfo ? nil : L("menu_bar_layout_sample_account"),
+            laneLabels: MenuBarLayoutLaneLabels(provider: provider, snapshot: nil),
+            primary: MenuBarLayoutRenderWindow(session),
+            secondary: MenuBarLayoutRenderWindow(weekly),
+            tertiary: MenuBarLayoutRenderWindow(scopedWeekly),
             session: MenuBarLayoutRenderWindow(session),
             weekly: MenuBarLayoutRenderWindow(weekly),
             scopedWeekly: MenuBarLayoutRenderWindow(scopedWeekly),
             scopedWeeklyTitle: "Fable only",
             automatic: MenuBarLayoutRenderWindow(session),
+            automaticText: nil,
             sessionPace: samplePace(session),
             weeklyPace: samplePace(weekly),
             automaticPace: samplePace(session),
-            runsOut: L("menu_bar_layout_sample_runs_out"),
+            runsOut: L("Runs out in %@", "1d 16h"),
+            // Provider-specific by design: only OpenRouter previews the Balance palette token.
+            balance: provider == .openrouter ? "$12.34" : nil,
             costToday: "$1.25",
             cost30d: "$20.00")
     }
@@ -753,18 +1039,40 @@ struct MenuBarLayoutPreview: View {
 struct MenuBarLayoutPreviewText: NSViewRepresentable {
     let rendered: MenuBarLayoutRenderedTitle
 
-    func makeNSView(context: Context) -> NSTextField {
+    func makeNSView(context: Context) -> NSStackView {
+        let stack = NSStackView()
+        self.configure(stack)
+        return stack
+    }
+
+    func updateNSView(_ stack: NSStackView, context: Context) {
+        self.configure(stack)
+    }
+
+    private func configure(_ stack: NSStackView) {
+        for subview in stack.arrangedSubviews {
+            stack.removeArrangedSubview(subview)
+            subview.removeFromSuperview()
+        }
+        stack.orientation = .horizontal
+        stack.spacing = 2
+        stack.alignment = .centerY
+        // The live status button renders an extracted leading icon as `button.image`; mirror that
+        // in the preview so an icon-leading (or icon-only) preset stays visible in Preferences.
+        if let icon = self.rendered.leadingIcon {
+            let imageView = NSImageView(image: icon)
+            imageView.imageScaling = .scaleProportionallyUpOrDown
+            imageView.contentTintColor = .labelColor
+            imageView.setContentHuggingPriority(.required, for: .horizontal)
+            stack.addArrangedSubview(imageView)
+        }
         let field = NSTextField(labelWithAttributedString: self.rendered.attributedTitle)
         field.alignment = .center
         field.lineBreakMode = .byClipping
         field.maximumNumberOfLines = 2
         field.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        return field
-    }
-
-    func updateNSView(_ field: NSTextField, context: Context) {
-        field.attributedStringValue = self.rendered.attributedTitle
-        field.setAccessibilityLabel(self.rendered.accessibilityLabel)
+        stack.addArrangedSubview(field)
+        stack.setAccessibilityLabel(self.rendered.accessibilityLabel)
     }
 }
 
@@ -799,7 +1107,10 @@ extension MenuBarLayoutGap {
 }
 
 extension MenuBarLayoutToken {
-    func editorLabel(provider: UsageProvider?) -> String {
+    func editorLabel(provider: UsageProvider?, snapshot: UsageSnapshot? = nil) -> String {
+        if case let .lanePercent(lane) = self {
+            return self.laneEditorLabel(lane: lane, provider: provider, snapshot: snapshot)
+        }
         if let providerLabel = self.providerEditorLabel(provider: provider) {
             return providerLabel
         }
@@ -828,6 +1139,7 @@ extension MenuBarLayoutToken {
         case .percent(window: .weekly): L("menu_bar_layout_token_weekly")
         case .percent(window: .scopedWeekly): L("menu_bar_layout_token_scoped_weekly")
         case .percent(window: .automatic): L("menu_bar_layout_token_auto")
+        case let .lanePercent(lane): L("%@ %@", lane.rawValue.capitalized, "%")
         case .pace(window: .session): L("menu_bar_layout_token_session_pace")
         case .pace(window: .weekly): L("menu_bar_layout_token_weekly_pace")
         case .pace(window: .scopedWeekly): L("menu_bar_layout_token_weekly_pace")
@@ -836,17 +1148,32 @@ extension MenuBarLayoutToken {
         case .resetCountdown: L("menu_bar_layout_token_resets_in")
         case .resetAbsolute: L("menu_bar_layout_token_reset_at")
         case .runsOut: L("menu_bar_layout_token_runs_out")
+        case .runsOutCompact: "\(L("menu_bar_layout_token_runs_out")) (compact)"
+        case .balance: L("Balance")
         case .costToday: L("menu_bar_layout_token_cost_today")
         case .cost30d: L("menu_bar_layout_token_cost_30d")
         case .separatorDot: "·"
         case .space: L("menu_bar_layout_token_space")
+        case .conditional: L("menu_bar_layout_token_conditional")
+        case .hidden: L("menu_bar_layout_conditional_hide")
         }
     }
 
-    func editorAccessibilityLabel(provider: UsageProvider?) -> String {
+    private func laneEditorLabel(
+        lane: MenuBarLayoutLane,
+        provider: UsageProvider?,
+        snapshot: UsageSnapshot?)
+        -> String
+    {
+        guard let provider else { return L("%@ %@", lane.rawValue.capitalized, "%") }
+        let label = MenuBarLayoutLaneLabels(provider: provider, snapshot: snapshot).label(for: lane)
+        return L("%@ %@", label, "%")
+    }
+
+    func editorAccessibilityLabel(provider: UsageProvider?, snapshot: UsageSnapshot? = nil) -> String {
         switch self {
         case .separatorDot: L("menu_bar_layout_token_separator_accessibility")
-        default: self.editorLabel(provider: provider)
+        default: self.editorLabel(provider: provider, snapshot: snapshot)
         }
     }
 
@@ -855,16 +1182,19 @@ extension MenuBarLayoutToken {
         case .icon: "app.dashed"
         case .providerName: "textformat"
         case .accountLabel: "person.crop.circle"
-        case .percent: "percent"
+        case .percent, .lanePercent: "percent"
         case .pace: "speedometer"
         case .usageBar: "chart.bar.fill"
         case .resetCountdown: "timer"
         case .resetAbsolute: "clock"
-        case .runsOut: "hourglass.bottomhalf.filled"
+        case .runsOut, .runsOutCompact: "hourglass.bottomhalf.filled"
+        case .balance: "creditcard"
         case .costToday: "dollarsign.circle"
         case .cost30d: "calendar.badge.clock"
         case .separatorDot: "smallcircle.filled.circle"
         case .space: "space"
+        case .conditional: "switch.2"
+        case .hidden: "eye.slash"
         }
     }
 }

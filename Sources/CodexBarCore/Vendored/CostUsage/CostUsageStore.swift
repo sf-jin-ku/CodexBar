@@ -76,11 +76,22 @@ actor CostUsageStore {
         base: CostUsageStore.baseSchemaVersion,
         parserHash: CodexParserHash.value)
     static let cacheGeneration = "sqlite:\(CostUsageStore.schemaVersion)"
+    static let compatiblePredecessorParserHashes: Set<String> = [
+        "98da5914d2f6a9cd", // Pushed PR producer before retry signaling; persisted rows unchanged.
+        "43609cc56f76a003", // 0.49.3 request-tier pricing; persisted row shape unchanged.
+        "b975eb705f905b9a", // 0.49.0-0.49.2 SQLite producer with compatible rows.
+        "47144baa8daccf52", // This branch changes only scan scheduling, discovery, and persistence bookkeeping.
+    ]
 
     /// Test-only crash injection: invoked inside `saveCodexCache`'s transaction after each
     /// persisted file with the running count, so a crash-safety harness can SIGKILL the
     /// process at a deterministic mid-save point. Never set in production.
     nonisolated(unsafe) static var saveCycleCheckpointForTesting: ((Int) -> Void)?
+    /// Test-only interleaving point after optimistic identity succeeds and before its writer lock.
+    nonisolated(unsafe) static var identicalContentPreLockCheckpointForTesting: (() -> Void)?
+
+    /// Test-only traversal proof for persisted Codex catch-up reconciliation. Never set in production.
+    nonisolated(unsafe) static var codexCatchUpReconciliationVisitForTesting: (() -> Void)?
 
     /// Process-wide serialization keeps every writable store connection on the same queue.
     /// This matches the scan pipeline's single-writer contract without multiplying executor
@@ -154,7 +165,8 @@ extension CostUsageStore {
         requestedScanWindow: (sinceKey: String, untilKey: String),
         reportWindow: (sinceKey: String, untilKey: String)? = nil,
         rowBudget: Int = CostUsageStore.defaultRowBudget,
-        fileBudgetBytes: Int64 = CostUsageStore.defaultFileBudgetBytes) -> CostUsageStoreBudgetResult
+        fileBudgetBytes: Int64 = CostUsageStore.defaultFileBudgetBytes,
+        skipIdenticalContent: Bool = false) -> CostUsageStoreBudgetResult
     {
         self.syncWithStoreIsolation { store in
             store.saveCodexCache(
@@ -163,7 +175,8 @@ extension CostUsageStore {
                 requestedScanWindow: requestedScanWindow,
                 reportWindow: reportWindow,
                 rowBudget: rowBudget,
-                fileBudgetBytes: fileBudgetBytes)
+                fileBudgetBytes: fileBudgetBytes,
+                skipIdenticalContent: skipIdenticalContent)
         }
     }
 }
@@ -219,10 +232,10 @@ extension CostUsageStore {
     /// every store call made until `endSaveTransaction()`. Nested `withDatabase` calls join
     /// the open transaction and the first inner failure aborts the cycle, so a crash or
     /// error midway leaves the previous on-disk state fully intact — matching the old JSON
-    /// path's atomic single-file replace. If the transaction cannot open, subsequent writes
-    /// proceed unprotected, exactly like the pre-transaction behavior.
-    func beginSaveTransaction() {
-        _ = self.withDatabase(default: false) { database in
+    /// path's atomic single-file replace. Callers must stop the save when this returns false.
+    @discardableResult
+    func beginSaveTransaction() -> Bool {
+        self.withDatabase(default: false) { database in
             try Self.execute(database, "BEGIN IMMEDIATE")
             self.activeTransactionDatabase = database
             return true
@@ -244,6 +257,17 @@ extension CostUsageStore {
                 throw failure
             }
             try Self.execute(database, "COMMIT")
+            return true
+        }
+    }
+
+    @discardableResult
+    func rollbackSaveTransaction() -> Bool {
+        guard self.activeTransactionDatabase != nil else { return false }
+        self.activeTransactionDatabase = nil
+        self.activeTransactionError = nil
+        return self.withDatabase(default: false) { database in
+            try Self.execute(database, "ROLLBACK")
             return true
         }
     }
@@ -286,6 +310,7 @@ extension CostUsageStore {
             self.connection = SQLiteConnection(handle: opened)
             return opened
         } catch {
+            guard Self.shouldRebuild(after: error) else { throw error }
             self.rebuildDatabase(reason: "open failed: \(error)")
             guard let database = self.connection?.handle else { throw error }
             return database
@@ -322,19 +347,79 @@ extension CostUsageStore {
     }
 
     private func validateExistingDatabase(_ database: OpaquePointer) throws {
-        guard try Self.scalarInt(database, "PRAGMA user_version") == Int64(self.expectedSchemaVersion) else {
-            throw StoreError.incompatibleSchema
+        let state: (isCurrent: Bool, canAdoptPredecessor: Bool)
+        try Self.execute(database, "BEGIN")
+        do {
+            state = try self.databaseCompatibilityState(database)
+            guard state.isCurrent || state.canAdoptPredecessor else {
+                throw StoreError.incompatibleSchema
+            }
+            try Self.validateDatabaseIntegrity(database)
+            try Self.execute(database, "COMMIT")
+        } catch {
+            try? Self.execute(database, "ROLLBACK")
+            throw error
         }
-        guard try Self.scalarText(
+        if state.isCurrent {
+            return
+        }
+
+        try Self.execute(database, "BEGIN IMMEDIATE")
+        do {
+            // Another process may have adopted the predecessor while this connection waited
+            // for the writer lock. Re-read the compatibility state before changing metadata.
+            let lockedState = try self.databaseCompatibilityState(database)
+            guard lockedState.isCurrent || lockedState.canAdoptPredecessor else {
+                throw StoreError.incompatibleSchema
+            }
+            try Self.validateDatabaseIntegrity(database)
+            if lockedState.canAdoptPredecessor {
+                try self.adoptCompatiblePredecessor(database)
+            }
+            try Self.execute(database, "COMMIT")
+        } catch {
+            try? Self.execute(database, "ROLLBACK")
+            throw error
+        }
+    }
+
+    private func databaseCompatibilityState(_ database: OpaquePointer) throws -> (
+        isCurrent: Bool,
+        canAdoptPredecessor: Bool)
+    {
+        let actualVersion = try Self.scalarInt(database, "PRAGMA user_version")
+        guard let storedHash = try Self.scalarText(
             database,
-            "SELECT value FROM meta WHERE key = 'parser_hash'") == self.expectedParserHash
+            "SELECT value FROM meta WHERE key = 'parser_hash'")
         else { throw StoreError.incompatibleSchema }
-        guard try Self.scalarText(database, "PRAGMA quick_check") == "ok" else {
+        let isCurrent = actualVersion == Int64(self.expectedSchemaVersion)
+            && storedHash == self.expectedParserHash
+        let predecessorVersion = Self.combinedSchemaVersion(
+            base: Self.baseSchemaVersion,
+            parserHash: storedHash)
+        let canAdoptPredecessor = self.expectedParserHash == CodexParserHash.value
+            && self.expectedSchemaVersion == Self.schemaVersion
+            && Self.compatiblePredecessorParserHashes.contains(storedHash)
+            && actualVersion == Int64(predecessorVersion)
+        return (isCurrent, canAdoptPredecessor)
+    }
+
+    private static func validateDatabaseIntegrity(_ database: OpaquePointer) throws {
+        guard try self.scalarText(database, "PRAGMA quick_check") == "ok" else {
             throw StoreError.invalidData
         }
-        guard try Self.scalarInt(database, "PRAGMA auto_vacuum") == 2 else {
+        guard try self.scalarInt(database, "PRAGMA auto_vacuum") == 2 else {
             throw StoreError.incompatibleSchema
         }
+    }
+
+    private func adoptCompatiblePredecessor(_ database: OpaquePointer) throws {
+        let statement = try Self.prepare(database, "UPDATE meta SET value = ? WHERE key = 'parser_hash'")
+        defer { sqlite3_finalize(statement) }
+        Self.bind(self.expectedParserHash, to: statement, at: 1)
+        try Self.stepDone(statement, database: database)
+        guard sqlite3_changes(database) == 1 else { throw StoreError.incompatibleSchema }
+        try Self.execute(database, "PRAGMA user_version = \(self.expectedSchemaVersion)")
     }
 
     private func createSchema(_ database: OpaquePointer) throws {

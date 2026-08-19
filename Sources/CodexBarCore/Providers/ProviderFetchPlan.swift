@@ -54,6 +54,9 @@ public struct ProviderFetchContext: Sendable {
     /// hosts set this beyond their refresh cadence so a slow cold start can
     /// recover on the next refresh.
     public let persistentCLISessionIdleWindow: TimeInterval?
+    /// Already-resolved CLI version from Settings (or the CLI's shared detector).
+    /// Codex PAT User-Agent consumes this instead of spawning `codex --version`.
+    public let resolvedCLIVersion: String?
 
     public init(
         runtime: ProviderRuntime,
@@ -75,7 +78,8 @@ public struct ProviderFetchContext: Sendable {
         costUsageHistoryDays: Int = 30,
         claudeOwnerCLIRecoveryOnly: Bool = false,
         persistsCLISessions: Bool = false,
-        persistentCLISessionIdleWindow: TimeInterval? = nil)
+        persistentCLISessionIdleWindow: TimeInterval? = nil,
+        resolvedCLIVersion: String? = nil)
     {
         self.runtime = runtime
         self.sourceMode = sourceMode
@@ -97,6 +101,7 @@ public struct ProviderFetchContext: Sendable {
         self.claudeOwnerCLIRecoveryOnly = claudeOwnerCLIRecoveryOnly
         self.persistsCLISessions = persistsCLISessions
         self.persistentCLISessionIdleWindow = persistentCLISessionIdleWindow
+        self.resolvedCLIVersion = resolvedCLIVersion
     }
 }
 
@@ -113,6 +118,10 @@ public struct ProviderFetchResult: Sendable {
     public let sourceLabel: String
     public let strategyID: String
     public let strategyKind: ProviderFetchKind
+    /// True when the Codex OAuth strategy already attempted reset-credit enrichment with its
+    /// winning in-memory credential snapshot. Generic enrichment must not reload auth.json after
+    /// that attempt fails, or it could attach another account's credits to this usage result.
+    public let codexResetCreditsAttempted: Bool
     /// Optional live diagnostic retained alongside an otherwise usable snapshot.
     public let diagnostic: String?
     /// Transient account ownership evidence for plan-utilization history.
@@ -137,6 +146,7 @@ public struct ProviderFetchResult: Sendable {
         sourceLabel: String,
         strategyID: String,
         strategyKind: ProviderFetchKind,
+        codexResetCreditsAttempted: Bool = false,
         diagnostic: String? = nil,
         claudeOAuthKeychainPersistentRefHash: String? = nil,
         claudeOAuthHistoryOwnerIdentifier: String? = nil,
@@ -151,6 +161,7 @@ public struct ProviderFetchResult: Sendable {
         self.sourceLabel = sourceLabel
         self.strategyID = strategyID
         self.strategyKind = strategyKind
+        self.codexResetCreditsAttempted = codexResetCreditsAttempted
         self.diagnostic = diagnostic
         self.claudeOAuthKeychainPersistentRefHash = claudeOAuthKeychainPersistentRefHash
         self.claudeOAuthHistoryOwnerIdentifier = claudeOAuthHistoryOwnerIdentifier
