@@ -254,6 +254,37 @@ struct ClaudeSwapAccountProjectionTests {
         ])
     }
 
+    @Test
+    func `cloud sync payload omits display only organization names`() throws {
+        let snapshots = ClaudeSwapAccountProjection.accountSnapshots(
+            from: self.list(
+                self.row(number: 1, email: "shared@example.com", organizationName: "Sendbird"),
+                self.row(
+                    number: 2,
+                    email: "shared@example.com",
+                    organizationName: "Acme",
+                    alias: "Work",
+                    active: true)),
+            now: self.now)
+        let account = try #require(snapshots.first)
+        let usage = try #require(account.snapshot)
+        let payload = AccountSnapshotSyncPayload(
+            provider: account.provider.instanceID,
+            deviceID: "test-device",
+            accountIdentity: account.accountEmail,
+            displayLabel: account.accountEmail ?? account.displayLabel,
+            usage: usage)
+        let data = try JSONEncoder().encode(payload)
+        let json = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let encodedUsage = try #require(json["usage"] as? [String: Any])
+
+        #expect(account.displayLabel == "Work")
+        #expect(payload.displayLabel == "shared@example.com")
+        #expect(payload.usage.identity?.accountOrganization == nil)
+        #expect(encodedUsage["accountOrganization"] == nil || encodedUsage["accountOrganization"] is NSNull)
+        #expect(encodedUsage["accountEmail"] as? String == "shared@example.com")
+    }
+
     private func list(_ rows: ClaudeSwapAccountRow...) -> ClaudeSwapAccountList {
         ClaudeSwapAccountList(
             activeAccountNumber: rows.first { $0.isActive }?.number,
