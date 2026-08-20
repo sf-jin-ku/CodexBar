@@ -271,7 +271,8 @@ enum CloudSyncSnapshotMigration {
         switch error.code {
         case .unknownItem, .permissionFailure, .notAuthenticated, .invalidArguments:
             return nil
-        case .networkUnavailable, .networkFailure, .serviceUnavailable, .requestRateLimited, .zoneBusy, .quotaExceeded:
+        case .networkUnavailable, .networkFailure, .serviceUnavailable, .requestRateLimited, .zoneBusy, .quotaExceeded,
+             .serverResponseLost:
             return max(error.retryAfterSeconds ?? 1, 1)
         default:
             guard let retryAfter = error.retryAfterSeconds else { return nil }
@@ -727,15 +728,17 @@ actor CloudSyncEngine: CKSyncEngineDelegate {
             CloudSyncDirtyState.clearSavedRecords(
                 changes.savedRecords.map(\.recordID.recordName),
                 envelope: &self.persistenceEnvelope)
+            // Evaluate confirmed saves before abandoning terminal failures so a mixed batch
+            // still counts a failed sibling's shared predecessor as referenced.
+            await self.finishConfirmedSnapshotMigrations(
+                savedRecordNames: changes.savedRecords.map(\.recordID.recordName),
+                syncEngine: syncEngine)
             for failure in changes.failedRecordSaves {
                 await self.handleSaveFailure(failure, syncEngine: syncEngine)
             }
             await self.handleSentRecordDeletes(
                 deletedIDs: changes.deletedRecordIDs,
                 failures: changes.failedRecordDeletes)
-            await self.finishConfirmedSnapshotMigrations(
-                savedRecordNames: changes.savedRecords.map(\.recordID.recordName),
-                syncEngine: syncEngine)
             self.persistEnvelope()
             if !changes.savedRecords.isEmpty {
                 await MainActor.run { self.state.status.lastSuccessfulPushAt = Date() }

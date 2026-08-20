@@ -333,16 +333,18 @@ struct CloudSyncSnapshotMigrationDeleteRetryTests {
             recordID("invalid"): Self.cloudKitError(.invalidArguments),
             recordID("network"): Self.cloudKitError(.networkFailure),
             recordID("quota"): Self.cloudKitError(.quotaExceeded, retryAfter: 30),
+            recordID("lost"): Self.cloudKitError(.serverResponseLost),
         ]
 
         let retryable = Set(CloudSyncSnapshotMigration.retryableFailedDeletes(failures).map(\.recordName))
         let reported = Set(CloudSyncSnapshotMigration.reportableFailedDeletes(failures).map(\.code))
 
-        #expect(retryable == ["network", "quota"])
+        #expect(retryable == ["network", "quota", "lost"])
         #expect(reported == [.permissionFailure, .notAuthenticated, .invalidArguments])
         #expect(CloudSyncSnapshotMigration.retryDelay(for: Self.cloudKitError(.unknownItem)) == nil)
         #expect(CloudSyncSnapshotMigration.retryDelay(for: Self.cloudKitError(.networkFailure)) == 1)
         #expect(CloudSyncSnapshotMigration.retryDelay(for: Self.cloudKitError(.quotaExceeded, retryAfter: 30)) == 30)
+        #expect(CloudSyncSnapshotMigration.retryDelay(for: Self.cloudKitError(.serverResponseLost)) == 1)
         #expect(CloudSyncSnapshotMigration.retryDelay(for: Self.cloudKitError(.permissionFailure)) == nil)
         #expect(
             CloudSyncSnapshotMigration.finishedFailedDeleteNames(failures) == [
@@ -424,6 +426,32 @@ struct CloudSyncSnapshotMigrationSaveThenDeleteTests {
             CloudSyncSnapshotMigration.takeDeletes(
                 forSavedRecordNames: [second.recordName],
                 pending: &pending) == [predecessor])
+        #expect(pending.isEmpty)
+    }
+
+    @Test
+    func `failed sibling replacement keeps a shared predecessor after a confirmed save`() throws {
+        let first = Self.claudeSnapshot(accountID: "claude-swap:1", email: "shared@example.com")
+        let second = Self.claudeSnapshot(accountID: "claude-swap:2", email: "shared@example.com")
+        let predecessor = try #require(first.emailKeyedPredecessorRecordName())
+        var pending = [
+            first.recordName: Set([predecessor]),
+            second.recordName: Set([predecessor]),
+        ]
+
+        #expect(
+            CloudSyncSnapshotMigration.takeDeletes(
+                forSavedRecordNames: [first.recordName],
+                pending: &pending).isEmpty)
+        #expect(pending[second.recordName] == [predecessor])
+
+        let abandoned = CloudSyncSnapshotMigration.abandonedReplacementNames(
+            failures: [second.recordName: Self.cloudKitError(.permissionFailure)],
+            pendingReplacements: Set(pending.keys))
+        #expect(abandoned == [second.recordName])
+        for name in abandoned {
+            pending.removeValue(forKey: name)
+        }
         #expect(pending.isEmpty)
     }
 
