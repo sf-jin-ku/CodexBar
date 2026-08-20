@@ -292,13 +292,13 @@ enum DashboardSnapshotBuilder {
         return "redacted\(email[at...])"
     }
 
-    /// Redacts every email-shaped range, including organization suffixes such as
-    /// `admin@company.com` and aliases like `Work:owner@example.com`, so Hide
-    /// Personal Info cannot leak a second address or swallow surrounding alias text.
+    /// Redacts every email-shaped range, including internal domains (`owner@corp`),
+    /// domain literals (`owner@[192.0.2.1]`), organization suffixes, and aliases, so
+    /// Hide Personal Info cannot leak a second address or swallow surrounding alias text.
     private static func redactEmailShapedText(_ text: String, mode: DashboardIdentityMode) -> String {
         guard mode == .redacted else { return text }
         guard let regex = try? NSRegularExpression(
-            pattern: #"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"#)
+            pattern: #"[A-Za-z0-9._%+-]+@(?:\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9.-]+)"#)
         else {
             return text
         }

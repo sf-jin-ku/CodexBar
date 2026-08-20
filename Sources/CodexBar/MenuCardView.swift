@@ -1107,7 +1107,7 @@ extension UsageMenuCardView.Model {
             let raw = input.snapshot?.identity(for: .cursor)?.accountID
             let accountID = raw?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             if !accountID.isEmpty {
-                return accountID.split(separator: "|", omittingEmptySubsequences: true).last.map(String.init) ?? accountID
+                return accountID.split(separator: "|").last.map(String.init) ?? accountID
             }
         }
         if input.metadata.usesAccountFallback || input.accountIsAuthoritative,
