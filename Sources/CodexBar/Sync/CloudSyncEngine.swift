@@ -201,7 +201,8 @@ enum CloudSyncSnapshotMigration {
                 toDrop.formUnion(obsolete)
             }
         }
-        return toDrop
+        let stillReferenced = Set(pending.values.joined())
+        return toDrop.subtracting(stillReferenced)
     }
 
     static func retainingObsoletePredecessors(
