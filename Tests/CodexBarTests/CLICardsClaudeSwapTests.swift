@@ -352,6 +352,47 @@ struct CLICardsClaudeSwapTests {
     }
 
     @Test
+    func `unavailable null usage retains previous CLI windows`() async {
+        let reset = Date(timeIntervalSince1970: 1_700_003_600)
+        let previous = ClaudeSwapAccountProjection.accountSnapshots(
+            from: ClaudeSwapAccountList(activeAccountNumber: 1, accounts: [
+                ClaudeSwapAccountRow(
+                    number: 1,
+                    email: "limited@example.com",
+                    isActive: true,
+                    usageStatus: .ok,
+                    fiveHour: ClaudeSwapUsageWindow(usedPercent: 100, resetsAt: reset),
+                    sevenDay: ClaudeSwapUsageWindow(usedPercent: 40, resetsAt: reset)),
+            ]),
+            now: Date(timeIntervalSince1970: 1_700_000_000))
+        let output = await CLIClaudeSwapCards.fetch(
+            eligible: true,
+            executablePath: "/fake/cswap",
+            renderOptions: self.renderOptions(),
+            ambientFetch: { self.ambientOutput(failed: true) },
+            accountListReader: { _ in
+                ClaudeSwapAccountList(activeAccountNumber: 1, accounts: [
+                    self.row(
+                        number: 1,
+                        active: true,
+                        status: .unavailable,
+                        email: "limited@example.com",
+                        hasUsage: false),
+                    self.row(number: 2),
+                ])
+            },
+            previousAccounts: previous)
+
+        #expect(output.exitCode == .success)
+        let activeCard = output.cards.first
+        #expect(activeCard?.accountLine == "limited@example.com")
+        #expect(activeCard?.metrics.isEmpty == false)
+        #expect(activeCard?.metrics.contains { $0.remainingPercent == 0 } == true)
+        #expect(activeCard?.accountProblem?.contains("Session limit reached") == true)
+        #expect(activeCard?.accountProblem?.contains("Usage fetch failed") != true)
+    }
+
+    @Test
     func `blank executable path preserves ambient output and fails distinctly`() async {
         let ambient = self.ambientOutput()
         let output = await CLIClaudeSwapCards.fetch(
