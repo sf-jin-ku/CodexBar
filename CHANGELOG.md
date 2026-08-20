@@ -16,6 +16,7 @@
 - Documented the AI Usage Limits Stream Deck plugin in the README integrations list (#3066). Thanks @lenadweb!
 - OpenCode Go: use the public authenticated usage API when `OPENCODE_API_KEY` is configured, overlaying authoritative rolling/weekly/monthly windows on local history with cookie fallback (#2879, #3065). Thanks @akshayprabhu200!
 - Claude: keep 100% claude-swap usage bars when cswap defers polling at a limit, and name the exhausted window and reset instead of showing "Usage fetch failed." (#3081). Thanks @sf-jin-ku!
+- Kiro: show overage credits spent against their cap, plus accrued charges against the overage budget. The `kiro-cli` report states credits against the plan alone and omits the overage section entirely for organization accounts, so CodexBar now reads the plan and overage ceilings from the same `GetUsageLimits` service the CLI itself calls, falling back to the CLI report when it is unavailable.
 - Claude: distinguish claude-swap accounts that share an email with the workspace name or slot, and honor a user-chosen display alias.
 - z.ai: show the BigModel CN pay-as-you-go account balance inside Quota details, best-effort and CN-only (#3109). Thanks @RunhuaHuang!
 - Fixed the mainland Alibaba Personal/Solo Token Plan always reporting "login required": the console shell now serves its `sec_token` to CodexBar's fetch and the upper-case `SEC_TOKEN` shape is parsed (#2891, #3098). Thanks @LeoLin990405!
