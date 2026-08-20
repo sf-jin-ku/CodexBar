@@ -12,9 +12,13 @@ public struct CodexSpendControlsMonthlyUsageResponse: Decodable, Sendable {
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.currentMonthUsage = Self.decodeFlexibleDouble(container, forKey: .currentMonthUsage)
-        self.effectiveMonthlyLimit = try? container.decodeIfPresent(
+        self.effectiveMonthlyLimit = try container.decodeIfPresent(
             EffectiveMonthlyLimit.self,
             forKey: .effectiveMonthlyLimit)
+    }
+
+    public var monthlyLimitMappingFailed: Bool {
+        self.effectiveMonthlyLimit?.limitWasUnmappable == true
     }
 
     public func codexCreditLimitSnapshot(updatedAt: Date) -> CodexCreditLimitSnapshot? {
@@ -37,6 +41,7 @@ public struct CodexSpendControlsMonthlyUsageResponse: Decodable, Sendable {
 
     public struct EffectiveMonthlyLimit: Decodable, Sendable {
         public let limit: Double?
+        public let limitWasUnmappable: Bool
         public let enforcementMode: String?
         public let limitMode: String?
 
@@ -48,7 +53,11 @@ public struct CodexSpendControlsMonthlyUsageResponse: Decodable, Sendable {
 
         public init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
-            self.limit = CodexSpendControlsMonthlyUsageResponse.decodeFlexibleDouble(container, forKey: .limit)
+            let decodedLimit = CodexSpendControlsMonthlyUsageResponse.decodeFlexibleDoubleResult(
+                container,
+                forKey: .limit)
+            self.limit = decodedLimit.value
+            self.limitWasUnmappable = decodedLimit.unmappable
             self.enforcementMode = try? container.decodeIfPresent(String.self, forKey: .enforcementMode)
             self.limitMode = try? container.decodeIfPresent(String.self, forKey: .limitMode)
         }
@@ -58,16 +67,31 @@ public struct CodexSpendControlsMonthlyUsageResponse: Decodable, Sendable {
         _ container: KeyedDecodingContainer<Key>,
         forKey key: Key) -> Double?
     {
-        if let value = try? container.decodeIfPresent(Double.self, forKey: key) {
-            return value
+        self.decodeFlexibleDoubleResult(container, forKey: key).value
+    }
+
+    fileprivate static func decodeFlexibleDoubleResult<Key: CodingKey>(
+        _ container: KeyedDecodingContainer<Key>,
+        forKey key: Key) -> (value: Double?, unmappable: Bool)
+    {
+        guard container.contains(key) else { return (nil, false) }
+        if (try? container.decodeNil(forKey: key)) == true {
+            return (nil, false)
         }
-        if let value = try? container.decodeIfPresent(Int.self, forKey: key) {
-            return Double(value)
+        if let value = try? container.decode(Double.self, forKey: key) {
+            return (value, false)
         }
-        if let value = try? container.decodeIfPresent(String.self, forKey: key) {
-            return Double(value.trimmingCharacters(in: .whitespacesAndNewlines))
+        if let value = try? container.decode(Int.self, forKey: key) {
+            return (Double(value), false)
         }
-        return nil
+        if let value = try? container.decode(String.self, forKey: key) {
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let parsed = Double(trimmed) {
+                return (parsed, false)
+            }
+            return (nil, true)
+        }
+        return (nil, true)
     }
 }
 

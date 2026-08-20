@@ -650,6 +650,9 @@ struct CodexOAuthFetchStrategy: ProviderFetchStrategy {
 
         do {
             let response = try await fetcher(accountId)
+            if response.monthlyLimitMappingFailed {
+                return result.markingMonthlyLimitEnrichmentFailed()
+            }
             let updatedAt = result.credits?.updatedAt ?? result.usage.updatedAt
             guard let limit = response.codexCreditLimitSnapshot(updatedAt: updatedAt) else { return result }
             let credits = result.credits.map {

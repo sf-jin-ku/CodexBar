@@ -52,6 +52,18 @@ struct CodexSpendControlsMonthlyUsageTests {
         """
     }
 
+    private func malformedNestedLimitJSON() -> String {
+        """
+        {
+          "current_month_usage": 12,
+          "effective_monthly_limit": {
+            "limit": {"amount": 7000},
+            "enforcement_mode": "HARD_CAP"
+          }
+        }
+        """
+    }
+
     private func monthlyUsageJSON(
         usage: String = "3046.4506806135178",
         limit: String = "7000",
@@ -149,6 +161,16 @@ struct CodexSpendControlsMonthlyUsageTests {
 
         #expect(zero.codexCreditLimitSnapshot(updatedAt: Date()) == nil)
         #expect(missing.codexCreditLimitSnapshot(updatedAt: Date()) == nil)
+        #expect(!zero.monthlyLimitMappingFailed)
+        #expect(!missing.monthlyLimitMappingFailed)
+    }
+
+    @Test
+    func `unmappable nested limit is an enrichment failure not confirmed absence`() throws {
+        let malformed = try self.decodeMonthlyUsage(self.malformedNestedLimitJSON())
+
+        #expect(malformed.codexCreditLimitSnapshot(updatedAt: Date()) == nil)
+        #expect(malformed.monthlyLimitMappingFailed)
     }
 
     @Test
@@ -278,6 +300,27 @@ struct CodexSpendControlsMonthlyUsageTests {
         #expect(result.strategyKind == original.strategyKind)
         #expect(result.diagnostic == original.diagnostic)
         #expect(!original.codexMonthlyLimitEnrichmentFailed)
+        #expect(result.codexMonthlyLimitEnrichmentFailed)
+    }
+
+    @Test
+    func `O auth helper treats unmappable nested limit as enrichment failure`() async throws {
+        let usageJSON = self.educationUsageJSON()
+        let usage = try self.decodeUsage(usageJSON)
+        let original = try CodexOAuthFetchStrategy._mapResultForTesting(
+            Data(usageJSON.utf8),
+            credentials: self.makeCredentials())
+        let payload = try self.decodeMonthlyUsage(self.malformedNestedLimitJSON())
+
+        let result = try await CodexOAuthFetchStrategy._applySpendControlsMonthlyLimitForTesting(
+            original,
+            usage: usage,
+            credentials: self.makeCredentials(accountId: "credential-account"),
+            context: self.makeContext(),
+            fetcher: { _ in payload })
+
+        #expect(result.credits == original.credits)
+        #expect(result.credits?.codexCreditLimit == nil)
         #expect(result.codexMonthlyLimitEnrichmentFailed)
     }
 
