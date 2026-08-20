@@ -136,6 +136,10 @@ public enum ClaudeSwapAccountProjection {
 
     private static func unexpiredWindow(_ window: RateWindow?, now: Date) -> RateWindow? {
         guard let window else { return nil }
+        if window.usedPercent >= self.exhaustedUsedPercent {
+            guard let resetsAt = window.resetsAt, resetsAt > now else { return nil }
+            return window
+        }
         guard window.resetsAt.map({ $0 > now }) ?? true else { return nil }
         return window
     }

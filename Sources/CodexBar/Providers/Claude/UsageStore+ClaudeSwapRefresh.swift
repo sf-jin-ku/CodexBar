@@ -78,10 +78,10 @@ extension UsageStore {
                 from: list,
                 previousAccounts: ClaudeSwapRetainedUsageStore.previousAccounts(
                     inMemory: self.claudeSwapAccountSnapshots))
-            ClaudeSwapRetainedUsageStore.save(snapshots)
             guard self.isCurrentClaudeSwapRefresh(executablePath: executablePath, generation: generation) else {
                 return
             }
+            ClaudeSwapRetainedUsageStore.save(snapshots)
             self.claudeSwapAccountSnapshots = snapshots
             self.claudeSwapLastRefreshAt = Date()
             self.claudeSwapLastError = nil
