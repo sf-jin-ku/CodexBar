@@ -205,6 +205,32 @@ struct KiroUsageLimitsAPITests {
     }
 
     @Test
+    func `non usd api without charges does not keep the cli usd estimate`() throws {
+        let json = Self.overageInUseResponse
+            .replacingOccurrences(of: "\"currency\":\"USD\"", with: "\"currency\":\"EUR\"")
+            .replacingOccurrences(of: "\"overageCharges\":144.139711109352,", with: "")
+        let limits = try KiroUsageLimitsAPI.parse(Data(json.utf8))
+        #expect(limits.currencyCode == "EUR")
+        #expect(limits.overageCharges == nil)
+
+        let probe = KiroStatusProbe()
+        let cliReport = try probe.parse(output: """
+        Estimated Usage | resets on 2026-09-01 | KIRO POWER
+        Credits (10000.00 of 10000 covered in plan)
+        ████████████████████████████████████████████████████████████████████████████████ 100%
+
+        Overages: Enabled billed at $0.04 per request
+        Credits used: 40.29
+        Est. cost: $1.61 USD
+        """)
+        #expect(cliReport.estimatedOverageCostUSD == 1.61)
+
+        let snapshot = cliReport.withUsageLimits(limits)
+        #expect(snapshot.estimatedOverageCostUSD == nil)
+        #expect(snapshot.usageLimits?.currencyCode == "EUR")
+    }
+
+    @Test
     func `resolves kiro cli state database per platform and overrides`() {
         let home = URL(fileURLWithPath: "/tmp/codexbar-kiro-home", isDirectory: true)
         let mac = KiroUsageLimitsAPI.stateDatabaseURL(
