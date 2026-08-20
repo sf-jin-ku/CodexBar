@@ -179,9 +179,54 @@ enum CloudSyncSnapshotMigration {
         }
     }
 
+    static func predecessorNames(
+        for snapshot: AccountSnapshotSyncPayload,
+        obsoleteNames: Set<String>) -> Set<String>
+    {
+        guard let predecessor = snapshot.emailKeyedPredecessorRecordName(),
+              obsoleteNames.contains(predecessor)
+        else {
+            return []
+        }
+        return [predecessor]
+    }
+
+    static func takeDeletes(
+        forSavedRecordNames savedNames: [String],
+        pending: inout [String: Set<String>]) -> Set<String>
+    {
+        var toDrop: Set<String> = []
+        for name in savedNames {
+            if let obsolete = pending.removeValue(forKey: name) {
+                toDrop.formUnion(obsolete)
+            }
+        }
+        return toDrop
+    }
+
     static func retryableFailedDeletes(_ failures: [CKRecord.ID: CKError]) -> [CKRecord.ID] {
         failures.compactMap { recordID, error in
-            error.code == .unknownItem ? nil : recordID
+            self.retryDelay(for: error) == nil ? nil : recordID
+        }
+    }
+
+    static func reportableFailedDeletes(_ failures: [CKRecord.ID: CKError]) -> [CKError] {
+        failures.values.filter { error in
+            error.code != .unknownItem && self.retryDelay(for: error) == nil
+        }
+    }
+
+    /// Delayed retries only for recoverable CloudKit failures. Terminal per-record errors such as
+    /// `permissionFailure`, `notAuthenticated`, and `invalidArguments` are reported once.
+    static func retryDelay(for error: CKError) -> TimeInterval? {
+        switch error.code {
+        case .unknownItem, .permissionFailure, .notAuthenticated, .invalidArguments:
+            return nil
+        case .networkUnavailable, .networkFailure, .serviceUnavailable, .requestRateLimited, .zoneBusy, .quotaExceeded:
+            return max(error.retryAfterSeconds ?? 1, 1)
+        default:
+            guard let retryAfter = error.retryAfterSeconds else { return nil }
+            return max(retryAfter, 1)
         }
     }
 }
@@ -220,6 +265,7 @@ actor CloudSyncEngine: CKSyncEngineDelegate {
     private var lastSnapshotPushAt: Date?
     private var pendingSnapshots: [AccountSnapshotSyncPayload] = []
     private var lastSnapshotHashes: [String: String] = [:]
+    private var pendingPredecessorDeletes: [String: Set<String>] = [:]
     private var lastKnownProviderConfigs: [ProviderInstanceID: ProviderConfig] = [:]
     private var lastKnownPreferences: SyncedPreferences?
     private var lastKnownIncludeSecrets: Bool?
@@ -613,9 +659,10 @@ actor CloudSyncEngine: CKSyncEngineDelegate {
             for failure in changes.failedRecordSaves {
                 await self.handleSaveFailure(failure, syncEngine: syncEngine)
             }
-            for recordID in CloudSyncSnapshotMigration.retryableFailedDeletes(changes.failedRecordDeletes) {
-                syncEngine.state.add(pendingRecordZoneChanges: [.deleteRecord(recordID)])
-            }
+            await self.handleFailedDeletes(changes.failedRecordDeletes)
+            await self.finishConfirmedSnapshotMigrations(
+                savedRecordNames: changes.savedRecords.map(\.recordID.recordName),
+                syncEngine: syncEngine)
             self.persistEnvelope()
             if !changes.savedRecords.isEmpty {
                 await MainActor.run { self.state.status.lastSuccessfulPushAt = Date() }
@@ -1036,6 +1083,61 @@ actor CloudSyncEngine: CKSyncEngineDelegate {
 }
 
 extension CloudSyncEngine {
+    private func finishConfirmedSnapshotMigrations(
+        savedRecordNames: [String],
+        syncEngine: CKSyncEngine) async
+    {
+        let toDrop = CloudSyncSnapshotMigration.takeDeletes(
+            forSavedRecordNames: savedRecordNames,
+            pending: &self.pendingPredecessorDeletes)
+        for name in savedRecordNames {
+            guard self.lastSnapshotHashes[name] == nil,
+                  let payload = self.persistenceEnvelope.fleetSnapshots[name],
+                  let hash = try? CanonicalSyncJSON.hash(payload)
+            else { continue }
+            self.lastSnapshotHashes[name] = hash
+        }
+        guard !toDrop.isEmpty else { return }
+        let recordIDs = CloudSyncSnapshotMigration.drop(
+            toDrop,
+            hashes: &self.lastSnapshotHashes,
+            envelope: &self.persistenceEnvelope,
+            desiredRecords: &self.desiredRecords,
+            zoneID: Self.zoneID)
+        for recordID in recordIDs {
+            syncEngine.state.add(pendingRecordZoneChanges: [.deleteRecord(recordID)])
+        }
+        await MainActor.run {
+            toDrop.forEach { self.state.fleetSnapshots.removeValue(forKey: $0) }
+        }
+    }
+
+    private func handleFailedDeletes(_ failures: [CKRecord.ID: CKError]) async {
+        for error in CloudSyncSnapshotMigration.reportableFailedDeletes(failures) {
+            await self.record(error: error)
+        }
+        for recordID in CloudSyncSnapshotMigration.retryableFailedDeletes(failures) {
+            let delay = failures[recordID].flatMap(CloudSyncSnapshotMigration.retryDelay(for:)) ?? 1
+            self.scheduleDeleteRetry(recordID: recordID, after: delay)
+        }
+    }
+
+    private func scheduleDeleteRetry(recordID: CKRecord.ID, after delay: TimeInterval) {
+        Task { [weak self] in
+            do {
+                if delay > 0 {
+                    try await Task.sleep(for: .seconds(delay))
+                }
+                await Task.yield()
+                guard let self, let engine = await self.engine, await self.enabled else { return }
+                engine.state.add(pendingRecordZoneChanges: [.deleteRecord(recordID)])
+                try await engine.sendChanges(.init(scope: .recordIDs([recordID])))
+            } catch {
+                await self?.record(error: error)
+            }
+        }
+    }
+
     private func pushPendingSnapshots() async {
         guard let engine = self.engine, !self.pendingSnapshots.isEmpty else { return }
         guard await MainActor.run(body: { !self.state.status.needsAppUpdate }) else { return }
@@ -1057,21 +1159,18 @@ extension CloudSyncEngine {
                 record.encryptedValues["displayLabel"] = payload.displayLabel as CKRecordValue
                 record.encryptedValues["usagePayload"] = try CanonicalSyncJSON.string(payload.usage) as CKRecordValue
                 self.desiredRecords[recordID] = record
-                self.lastSnapshotHashes[payload.recordName] = hash
                 self.persistenceEnvelope.fleetSnapshots[payload.recordName] = payload
+                let predecessors = CloudSyncSnapshotMigration.predecessorNames(
+                    for: payload,
+                    obsoleteNames: obsoleteNames)
+                if predecessors.isEmpty {
+                    self.lastSnapshotHashes[payload.recordName] = hash
+                } else {
+                    // Keep the hash unset until CloudKit confirms the replacement save so a
+                    // failed send can retry, and so the predecessor is not deleted first.
+                    self.pendingPredecessorDeletes[payload.recordName, default: []].formUnion(predecessors)
+                }
                 engine.state.add(pendingRecordZoneChanges: [.saveRecord(recordID)])
-            }
-            for recordID in CloudSyncSnapshotMigration.drop(
-                obsoleteNames,
-                hashes: &self.lastSnapshotHashes,
-                envelope: &self.persistenceEnvelope,
-                desiredRecords: &self.desiredRecords,
-                zoneID: Self.zoneID)
-            {
-                engine.state.add(pendingRecordZoneChanges: [.deleteRecord(recordID)])
-            }
-            if !obsoleteNames.isEmpty {
-                await MainActor.run { obsoleteNames.forEach { self.state.fleetSnapshots.removeValue(forKey: $0) } }
             }
             self.pendingSnapshots = []
             self.lastSnapshotPushAt = Date()

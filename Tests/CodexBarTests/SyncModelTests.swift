@@ -317,3 +317,81 @@ struct CloudSyncRecordRebaseTests {
         #expect(rebased.encryptedValues["cookieHeader"] as? String == "cookie=1")
     }
 }
+
+struct CloudSyncSnapshotMigrationDeleteRetryTests {
+    @Test
+    func `terminal CloudKit delete errors are reported once and not retried`() {
+        let zoneID = CloudSyncEngine.zoneID
+        func recordID(_ name: String) -> CKRecord.ID {
+            CKRecord.ID(recordName: name, zoneID: zoneID)
+        }
+
+        let failures: [CKRecord.ID: CKError] = [
+            recordID("unknown"): Self.cloudKitError(.unknownItem),
+            recordID("denied"): Self.cloudKitError(.permissionFailure),
+            recordID("unauth"): Self.cloudKitError(.notAuthenticated),
+            recordID("invalid"): Self.cloudKitError(.invalidArguments),
+            recordID("network"): Self.cloudKitError(.networkFailure),
+            recordID("quota"): Self.cloudKitError(.quotaExceeded, retryAfter: 30),
+        ]
+
+        let retryable = Set(CloudSyncSnapshotMigration.retryableFailedDeletes(failures).map(\.recordName))
+        let reported = Set(CloudSyncSnapshotMigration.reportableFailedDeletes(failures).map(\.code))
+
+        #expect(retryable == ["network", "quota"])
+        #expect(reported == [.permissionFailure, .notAuthenticated, .invalidArguments])
+        #expect(CloudSyncSnapshotMigration.retryDelay(for: Self.cloudKitError(.unknownItem)) == nil)
+        #expect(CloudSyncSnapshotMigration.retryDelay(for: Self.cloudKitError(.networkFailure)) == 1)
+        #expect(CloudSyncSnapshotMigration.retryDelay(for: Self.cloudKitError(.quotaExceeded, retryAfter: 30)) == 30)
+        #expect(CloudSyncSnapshotMigration.retryDelay(for: Self.cloudKitError(.permissionFailure)) == nil)
+    }
+
+    private static func cloudKitError(_ code: CKError.Code, retryAfter: TimeInterval? = nil) -> CKError {
+        var userInfo: [String: Any] = [:]
+        if let retryAfter {
+            userInfo[CKErrorRetryAfterKey] = NSNumber(value: retryAfter)
+        }
+        let nsError = NSError(domain: CKErrorDomain, code: code.rawValue, userInfo: userInfo)
+        return CKError(_nsError: nsError)
+    }
+}
+
+struct CloudSyncSnapshotMigrationSaveThenDeleteTests {
+    @Test
+    func `predecessor deletes wait until the replacement record is saved`() throws {
+        let slot = Self.claudeSnapshot(accountID: "claude-swap:2", email: "owner@example.com")
+        let predecessor = try #require(slot.emailKeyedPredecessorRecordName())
+        let obsolete: Set<String> = [predecessor]
+
+        #expect(CloudSyncSnapshotMigration.predecessorNames(for: slot, obsoleteNames: obsolete) == [predecessor])
+        #expect(CloudSyncSnapshotMigration.predecessorNames(for: slot, obsoleteNames: []).isEmpty)
+
+        var pending = [slot.recordName: Set([predecessor])]
+        #expect(CloudSyncSnapshotMigration.takeDeletes(forSavedRecordNames: [], pending: &pending).isEmpty)
+        #expect(pending[slot.recordName] == [predecessor])
+        #expect(
+            CloudSyncSnapshotMigration.takeDeletes(
+                forSavedRecordNames: [slot.recordName],
+                pending: &pending) == [predecessor])
+        #expect(pending.isEmpty)
+    }
+
+    private static func claudeSnapshot(accountID: String, email: String) -> AccountSnapshotSyncPayload {
+        let usage = UsageSnapshot(
+            primary: nil,
+            secondary: nil,
+            updatedAt: Date(timeIntervalSince1970: 100),
+            identity: ProviderIdentitySnapshot(
+                providerID: .claude,
+                accountEmail: email,
+                accountOrganization: nil,
+                loginMethod: "claude-swap",
+                accountID: accountID))
+        return AccountSnapshotSyncPayload(
+            provider: .claude,
+            deviceID: "device-id",
+            accountIdentity: accountID,
+            displayLabel: email,
+            usage: usage)
+    }
+}
