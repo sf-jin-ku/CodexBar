@@ -180,6 +180,23 @@ struct CloudSyncSettingsTests {
     }
 
     @Test
+    func `pending predecessor deletes survive persistence round trip`() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("CloudSyncPendingPredecessorsTests-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let fileURL = directory.appendingPathComponent("engine-state.json")
+        let persistence = CloudSyncPersistence(fileURL: fileURL)
+        var envelope = CloudSyncPersistence.Envelope(stateSerialization: nil, encodedSystemFields: [:])
+        envelope.pendingPredecessorDeletes = ["snap-claude-slot-device-id": ["snap-claude-old-device-id"]]
+        try persistence.save(envelope)
+
+        #expect(
+            persistence.load().pendingPredecessorDeletes["snap-claude-slot-device-id"] == [
+                "snap-claude-old-device-id",
+            ])
+    }
+
+    @Test
     func `relaunch with cached fleet records and clean dirty set queues no configuration records`() {
         let metadata = CloudSyncPersistence.RecordMetadata(
             recordType: SyncRecordType.providerIntent.rawValue,

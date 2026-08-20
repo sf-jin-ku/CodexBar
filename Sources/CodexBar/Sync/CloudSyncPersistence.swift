@@ -20,6 +20,7 @@ struct CloudSyncPersistence: Sendable {
         var fleetDevices: [String: DeviceSyncPayload]
         var fleetSnapshots: [String: AccountSnapshotSyncPayload]
         var pendingSnapshotDeletes: Set<String>
+        var pendingPredecessorDeletes: [String: Set<String>]
 
         init(
             stateSerialization: CKSyncEngine.State.Serialization?,
@@ -30,7 +31,8 @@ struct CloudSyncPersistence: Sendable {
             preferencesDirty: Bool = false,
             fleetDevices: [String: DeviceSyncPayload] = [:],
             fleetSnapshots: [String: AccountSnapshotSyncPayload] = [:],
-            pendingSnapshotDeletes: Set<String> = [])
+            pendingSnapshotDeletes: Set<String> = [],
+            pendingPredecessorDeletes: [String: Set<String>] = [:])
         {
             self.stateSerialization = stateSerialization
             self.encodedSystemFields = encodedSystemFields
@@ -41,6 +43,7 @@ struct CloudSyncPersistence: Sendable {
             self.fleetDevices = fleetDevices
             self.fleetSnapshots = fleetSnapshots
             self.pendingSnapshotDeletes = pendingSnapshotDeletes
+            self.pendingPredecessorDeletes = pendingPredecessorDeletes
         }
 
         private enum CodingKeys: String, CodingKey {
@@ -53,6 +56,7 @@ struct CloudSyncPersistence: Sendable {
             case fleetDevices
             case fleetSnapshots
             case pendingSnapshotDeletes
+            case pendingPredecessorDeletes
         }
 
         init(from decoder: any Decoder) throws {
@@ -84,6 +88,9 @@ struct CloudSyncPersistence: Sendable {
             self.pendingSnapshotDeletes = try container.decodeIfPresent(
                 Set<String>.self,
                 forKey: .pendingSnapshotDeletes) ?? []
+            self.pendingPredecessorDeletes = try container.decodeIfPresent(
+                [String: Set<String>].self,
+                forKey: .pendingPredecessorDeletes) ?? [:]
         }
     }
 

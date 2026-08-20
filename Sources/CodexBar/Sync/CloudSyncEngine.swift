@@ -336,7 +336,6 @@ actor CloudSyncEngine: CKSyncEngineDelegate {
     private var lastSnapshotPushAt: Date?
     private var pendingSnapshots: [AccountSnapshotSyncPayload] = []
     private var lastSnapshotHashes: [String: String] = [:]
-    private var pendingPredecessorDeletes: [String: Set<String>] = [:]
     private var lastKnownProviderConfigs: [ProviderInstanceID: ProviderConfig] = [:]
     private var lastKnownPreferences: SyncedPreferences?
     private var lastKnownIncludeSecrets: Bool?
@@ -1042,7 +1041,6 @@ actor CloudSyncEngine: CKSyncEngineDelegate {
         if clearPersistence {
             self.persistenceEnvelope = .init(stateSerialization: nil, encodedSystemFields: [:])
             self.lastSnapshotHashes = [:]
-            self.pendingPredecessorDeletes = [:]
             self.didRehydrateFleetState = false
             try? self.persistence.delete()
             await MainActor.run {
@@ -1165,7 +1163,7 @@ extension CloudSyncEngine {
     {
         let toDrop = CloudSyncSnapshotMigration.takeDeletes(
             forSavedRecordNames: savedRecordNames,
-            pending: &self.pendingPredecessorDeletes)
+            pending: &self.persistenceEnvelope.pendingPredecessorDeletes)
         for name in savedRecordNames {
             guard self.lastSnapshotHashes[name] == nil,
                   let payload = self.persistenceEnvelope.fleetSnapshots[name],
@@ -1247,9 +1245,9 @@ extension CloudSyncEngine {
         let name = failure.record.recordID.recordName
         let abandoned = CloudSyncSnapshotMigration.abandonedReplacementNames(
             failures: [name: failure.error],
-            pendingReplacements: Set(self.pendingPredecessorDeletes.keys))
+            pendingReplacements: Set(self.persistenceEnvelope.pendingPredecessorDeletes.keys))
         guard abandoned.contains(name),
-              self.pendingPredecessorDeletes.removeValue(forKey: name) != nil
+              self.persistenceEnvelope.pendingPredecessorDeletes.removeValue(forKey: name) != nil
         else { return }
         if self.lastSnapshotHashes[name] == nil,
            let payload = self.persistenceEnvelope.fleetSnapshots[name],
@@ -1287,20 +1285,25 @@ extension CloudSyncEngine {
     }
 
     private func pushPendingSnapshots() async {
-        guard let engine = self.engine, !self.pendingSnapshots.isEmpty else { return }
+        guard let engine = self.engine else { return }
+        guard !self.pendingSnapshots.isEmpty || !self.persistenceEnvelope.pendingSnapshotDeletes.isEmpty else {
+            return
+        }
         guard await MainActor.run(body: { !self.state.status.needsAppUpdate }) else { return }
         do {
             let obsoleteNames = CloudSyncSnapshotMigration.obsoleteRecordNames(
                 liveSnapshots: self.pendingSnapshots,
                 hashes: self.lastSnapshotHashes,
                 envelope: self.persistenceEnvelope)
-            CloudSyncSnapshotMigration.retainingObsoletePredecessors(
-                in: &self.pendingPredecessorDeletes,
-                obsoleteNames: obsoleteNames)
-            self.cancelPendingSnapshotDeletes(
-                CloudSyncSnapshotMigration.cancelledPersistedDeletes(
-                    pendingDeletes: self.persistenceEnvelope.pendingSnapshotDeletes,
-                    liveNames: Set(self.pendingSnapshots.map(\.recordName))))
+            if !self.pendingSnapshots.isEmpty {
+                CloudSyncSnapshotMigration.retainingObsoletePredecessors(
+                    in: &self.persistenceEnvelope.pendingPredecessorDeletes,
+                    obsoleteNames: obsoleteNames)
+                self.cancelPendingSnapshotDeletes(
+                    CloudSyncSnapshotMigration.cancelledPersistedDeletes(
+                        pendingDeletes: self.persistenceEnvelope.pendingSnapshotDeletes,
+                        liveNames: Set(self.pendingSnapshots.map(\.recordName))))
+            }
             self.requeuePendingSnapshotDeletes()
             for payload in self.pendingSnapshots {
                 let hash = try CanonicalSyncJSON.hash(payload)
@@ -1327,7 +1330,7 @@ extension CloudSyncEngine {
                 CloudSyncSnapshotMigration.assigningPredecessors(
                     predecessors,
                     to: payload.recordName,
-                    pending: &self.pendingPredecessorDeletes)
+                    pending: &self.persistenceEnvelope.pendingPredecessorDeletes)
                 engine.state.add(pendingRecordZoneChanges: [.saveRecord(recordID)])
             }
             self.pendingSnapshots = []
