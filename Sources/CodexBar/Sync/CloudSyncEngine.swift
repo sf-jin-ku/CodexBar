@@ -229,6 +229,12 @@ enum CloudSyncSnapshotMigration {
             return max(retryAfter, 1)
         }
     }
+
+    static func finishedFailedDeleteNames(_ failures: [CKRecord.ID: CKError]) -> Set<String> {
+        Set(failures.compactMap { recordID, error in
+            self.retryDelay(for: error) == nil ? recordID.recordName : nil
+        })
+    }
 }
 
 enum CloudSyncEntitlementGate {
@@ -330,6 +336,7 @@ actor CloudSyncEngine: CKSyncEngineDelegate {
             try await self.queueCurrentConfigurationAndPreferences()
             guard await MainActor.run(body: { !self.state.status.needsAppUpdate }) else { return }
             try await self.queueDeviceRecord()
+            self.requeuePendingSnapshotDeletes()
             self.startPeriodicFetchTimer()
             self.scheduleFetchChanges(scopedToSyncZone: !initialized)
         } catch {
@@ -659,7 +666,9 @@ actor CloudSyncEngine: CKSyncEngineDelegate {
             for failure in changes.failedRecordSaves {
                 await self.handleSaveFailure(failure, syncEngine: syncEngine)
             }
-            await self.handleFailedDeletes(changes.failedRecordDeletes)
+            await self.handleSentRecordDeletes(
+                deletedIDs: changes.deletedRecordIDs,
+                failures: changes.failedRecordDeletes)
             await self.finishConfirmedSnapshotMigrations(
                 savedRecordNames: changes.savedRecords.map(\.recordID.recordName),
                 syncEngine: syncEngine)
@@ -1107,18 +1116,43 @@ extension CloudSyncEngine {
         for recordID in recordIDs {
             syncEngine.state.add(pendingRecordZoneChanges: [.deleteRecord(recordID)])
         }
+        self.rememberPendingSnapshotDeletes(toDrop)
         await MainActor.run {
             toDrop.forEach { self.state.fleetSnapshots.removeValue(forKey: $0) }
         }
     }
 
-    private func handleFailedDeletes(_ failures: [CKRecord.ID: CKError]) async {
+    private func handleSentRecordDeletes(deletedIDs: [CKRecord.ID], failures: [CKRecord.ID: CKError]) async {
+        var finished = Set(deletedIDs.map(\.recordName))
+        finished.formUnion(CloudSyncSnapshotMigration.finishedFailedDeleteNames(failures))
+        self.forgetPendingSnapshotDeletes(finished)
         for error in CloudSyncSnapshotMigration.reportableFailedDeletes(failures) {
             await self.record(error: error)
         }
         for recordID in CloudSyncSnapshotMigration.retryableFailedDeletes(failures) {
+            self.rememberPendingSnapshotDeletes([recordID.recordName])
             let delay = failures[recordID].flatMap(CloudSyncSnapshotMigration.retryDelay(for:)) ?? 1
             self.scheduleDeleteRetry(recordID: recordID, after: delay)
+        }
+    }
+
+    private func rememberPendingSnapshotDeletes(_ names: Set<String>) {
+        guard !names.isEmpty else { return }
+        self.persistenceEnvelope.pendingSnapshotDeletes.formUnion(names)
+        self.persistEnvelope()
+    }
+
+    private func forgetPendingSnapshotDeletes(_ names: Set<String>) {
+        let remaining = self.persistenceEnvelope.pendingSnapshotDeletes.subtracting(names)
+        guard remaining != self.persistenceEnvelope.pendingSnapshotDeletes else { return }
+        self.persistenceEnvelope.pendingSnapshotDeletes = remaining
+        self.persistEnvelope()
+    }
+
+    private func requeuePendingSnapshotDeletes() {
+        guard let engine = self.engine else { return }
+        for name in self.persistenceEnvelope.pendingSnapshotDeletes {
+            engine.state.add(pendingRecordZoneChanges: [.deleteRecord(self.recordID(named: name))])
         }
     }
 

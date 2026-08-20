@@ -344,6 +344,10 @@ struct CloudSyncSnapshotMigrationDeleteRetryTests {
         #expect(CloudSyncSnapshotMigration.retryDelay(for: Self.cloudKitError(.networkFailure)) == 1)
         #expect(CloudSyncSnapshotMigration.retryDelay(for: Self.cloudKitError(.quotaExceeded, retryAfter: 30)) == 30)
         #expect(CloudSyncSnapshotMigration.retryDelay(for: Self.cloudKitError(.permissionFailure)) == nil)
+        #expect(
+            CloudSyncSnapshotMigration.finishedFailedDeleteNames(failures) == [
+                "unknown", "denied", "unauth", "invalid",
+            ])
     }
 
     private static func cloudKitError(_ code: CKError.Code, retryAfter: TimeInterval? = nil) -> CKError {
