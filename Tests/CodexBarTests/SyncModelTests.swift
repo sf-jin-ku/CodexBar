@@ -381,6 +381,28 @@ struct CloudSyncSnapshotMigrationSaveThenDeleteTests {
     }
 
     @Test
+    func `pending predecessors drop names that are live again`() throws {
+        let slot = Self.claudeSnapshot(accountID: "claude-swap:2", email: "owner@example.com")
+        let predecessor = try #require(slot.emailKeyedPredecessorRecordName())
+        var pending = [slot.recordName: Set([predecessor])]
+
+        CloudSyncSnapshotMigration.retainingObsoletePredecessors(
+            in: &pending,
+            obsoleteNames: [])
+        #expect(pending.isEmpty)
+
+        pending = [slot.recordName: [predecessor, "snap-stale"]]
+        CloudSyncSnapshotMigration.assigningPredecessors(
+            [predecessor],
+            to: slot.recordName,
+            pending: &pending)
+        #expect(pending[slot.recordName] == [predecessor])
+
+        CloudSyncSnapshotMigration.assigningPredecessors([], to: slot.recordName, pending: &pending)
+        #expect(pending.isEmpty)
+    }
+
+    @Test
     func `terminal replacement save failures stop retrying the same payload`() {
         let slot = "snap-claude-slot-device-id"
         let failures = [

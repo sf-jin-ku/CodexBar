@@ -204,6 +204,28 @@ enum CloudSyncSnapshotMigration {
         return toDrop
     }
 
+    static func retainingObsoletePredecessors(
+        in pending: inout [String: Set<String>],
+        obsoleteNames: Set<String>)
+    {
+        pending = pending.compactMapValues { predecessors in
+            let live = predecessors.intersection(obsoleteNames)
+            return live.isEmpty ? nil : live
+        }
+    }
+
+    static func assigningPredecessors(
+        _ predecessors: Set<String>,
+        to replacement: String,
+        pending: inout [String: Set<String>])
+    {
+        if predecessors.isEmpty {
+            pending.removeValue(forKey: replacement)
+        } else {
+            pending[replacement] = predecessors
+        }
+    }
+
     static func retryableFailedDeletes(_ failures: [CKRecord.ID: CKError]) -> [CKRecord.ID] {
         failures.compactMap { recordID, error in
             self.retryDelay(for: error) == nil ? nil : recordID
@@ -1224,6 +1246,9 @@ extension CloudSyncEngine {
                 liveSnapshots: self.pendingSnapshots,
                 hashes: self.lastSnapshotHashes,
                 envelope: self.persistenceEnvelope)
+            CloudSyncSnapshotMigration.retainingObsoletePredecessors(
+                in: &self.pendingPredecessorDeletes,
+                obsoleteNames: obsoleteNames)
             for payload in self.pendingSnapshots {
                 let hash = try CanonicalSyncJSON.hash(payload)
                 guard self.lastSnapshotHashes[payload.recordName] != hash else { continue }
@@ -1243,12 +1268,13 @@ extension CloudSyncEngine {
                     obsoleteNames: obsoleteNames)
                 if predecessors.isEmpty {
                     self.lastSnapshotHashes[payload.recordName] = hash
-                } else {
-                    // Keep the hash unset until CloudKit confirms the replacement save, or a
-                    // terminal save failure abandons this payload, so the predecessor is not
-                    // deleted first and recoverable failures can still retry.
-                    self.pendingPredecessorDeletes[payload.recordName, default: []].formUnion(predecessors)
                 }
+                // Replace, don't union: a later live email-keyed snapshot must not stay queued
+                // for delete after the slot-keyed save is confirmed.
+                CloudSyncSnapshotMigration.assigningPredecessors(
+                    predecessors,
+                    to: payload.recordName,
+                    pending: &self.pendingPredecessorDeletes)
                 engine.state.add(pendingRecordZoneChanges: [.saveRecord(recordID)])
             }
             self.pendingSnapshots = []
