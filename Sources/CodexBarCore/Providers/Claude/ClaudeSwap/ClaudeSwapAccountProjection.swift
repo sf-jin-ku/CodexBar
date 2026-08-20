@@ -82,12 +82,12 @@ public enum ClaudeSwapAccountProjection {
         for (row, label) in zip(rows, candidates) {
             guard duplicateEmails.contains(self.normalizedEmail(row.email)),
                   self.alias(from: row) == nil else { continue }
-            collisionCounts[label, default: 0] += 1
+            collisionCounts[label.lowercased(), default: 0] += 1
         }
         return zip(rows, candidates).map { row, label in
             guard duplicateEmails.contains(self.normalizedEmail(row.email)),
                   self.alias(from: row) == nil,
-                  collisionCounts[label, default: 0] > 1
+                  collisionCounts[label.lowercased(), default: 0] > 1
             else {
                 return label
             }

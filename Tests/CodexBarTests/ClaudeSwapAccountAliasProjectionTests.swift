@@ -80,6 +80,20 @@ struct ClaudeSwapAccountAliasProjectionTests {
     }
 
     @Test
+    func `appends account ordinal when same-mailbox emails differ only by case`() {
+        let snapshots = ClaudeSwapAccountProjection.accountSnapshots(
+            from: self.list(
+                self.row(number: 1, email: "Shared@example.com", organizationName: "Sendbird"),
+                self.row(number: 4, email: "shared@example.com", organizationName: "Sendbird", active: true)),
+            now: self.now)
+
+        #expect(snapshots.map(\.displayLabel) == [
+            "shared@example.com · Sendbird · Account 4",
+            "Shared@example.com · Sendbird · Account 1",
+        ])
+    }
+
+    @Test
     func `prefers user alias over email and empty email ordinal`() {
         let snapshots = ClaudeSwapAccountProjection.accountSnapshots(
             from: self.list(
