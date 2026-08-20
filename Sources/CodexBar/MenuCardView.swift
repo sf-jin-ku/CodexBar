@@ -1103,12 +1103,12 @@ extension UsageMenuCardView.Model {
             return email
         }
         // Provider-specific by design: Cursor app auth can expose only a subject ID, so its card needs this fallback.
-        if input.provider == .cursor,
-            let accountID = input.snapshot?.identity(for: .cursor)?.accountID?
-                .trimmingCharacters(in: .whitespacesAndNewlines),
-            !accountID.isEmpty
-        {
-            return accountID.split(separator: "|", omittingEmptySubsequences: true).last.map(String.init) ?? accountID
+        if input.provider == .cursor {
+            let raw = input.snapshot?.identity(for: .cursor)?.accountID
+            let accountID = raw?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if !accountID.isEmpty {
+                return accountID.split(separator: "|", omittingEmptySubsequences: true).last.map(String.init) ?? accountID
+            }
         }
         if input.metadata.usesAccountFallback || input.accountIsAuthoritative,
            let email = input.account.email, !email.isEmpty
