@@ -440,6 +440,10 @@ struct CloudSyncSnapshotMigrationSaveThenDeleteTests {
             CloudSyncSnapshotMigration.cancelledPersistedDeletes(
                 pendingDeletes: ["snap-claude-stale-device-id"],
                 liveNames: [predecessor]).isEmpty)
+        #expect(
+            CloudSyncSnapshotMigration.pendingDeletesToRequeue(
+                pendingDeletes: [predecessor, "snap-claude-stale-device-id"],
+                liveNames: [predecessor]) == ["snap-claude-stale-device-id"])
     }
 
     @Test

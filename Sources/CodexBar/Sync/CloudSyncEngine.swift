@@ -233,6 +233,13 @@ enum CloudSyncSnapshotMigration {
         pendingDeletes.intersection(liveNames)
     }
 
+    static func pendingDeletesToRequeue(
+        pendingDeletes: Set<String>,
+        liveNames: Set<String>) -> Set<String>
+    {
+        pendingDeletes.subtracting(liveNames)
+    }
+
     static func liveSnapshotRecordNames(
         pendingRecordNames: some Sequence<String>,
         storedRecordNames: some Sequence<String>) -> Set<String>
@@ -394,7 +401,6 @@ actor CloudSyncEngine: CKSyncEngineDelegate {
             try await self.queueCurrentConfigurationAndPreferences()
             guard await MainActor.run(body: { !self.state.status.needsAppUpdate }) else { return }
             try await self.queueDeviceRecord()
-            self.requeuePendingSnapshotDeletes()
             self.startPeriodicFetchTimer()
             self.scheduleFetchChanges(scopedToSyncZone: !initialized)
         } catch {
@@ -1035,6 +1041,8 @@ actor CloudSyncEngine: CKSyncEngineDelegate {
         self.quotaRetryState.reset()
         if clearPersistence {
             self.persistenceEnvelope = .init(stateSerialization: nil, encodedSystemFields: [:])
+            self.lastSnapshotHashes = [:]
+            self.pendingPredecessorDeletes = [:]
             self.didRehydrateFleetState = false
             try? self.persistence.delete()
             await MainActor.run {
@@ -1222,7 +1230,13 @@ extension CloudSyncEngine {
 
     private func requeuePendingSnapshotDeletes() {
         guard let engine = self.engine else { return }
-        for name in self.persistenceEnvelope.pendingSnapshotDeletes {
+        let liveNames = CloudSyncSnapshotMigration.liveSnapshotRecordNames(
+            pendingRecordNames: self.pendingSnapshots.map(\.recordName),
+            storedRecordNames: self.persistenceEnvelope.fleetSnapshots.keys)
+        let names = CloudSyncSnapshotMigration.pendingDeletesToRequeue(
+            pendingDeletes: self.persistenceEnvelope.pendingSnapshotDeletes,
+            liveNames: liveNames)
+        for name in names {
             engine.state.add(pendingRecordZoneChanges: [.deleteRecord(self.recordID(named: name))])
         }
     }
@@ -1287,6 +1301,7 @@ extension CloudSyncEngine {
                 CloudSyncSnapshotMigration.cancelledPersistedDeletes(
                     pendingDeletes: self.persistenceEnvelope.pendingSnapshotDeletes,
                     liveNames: Set(self.pendingSnapshots.map(\.recordName))))
+            self.requeuePendingSnapshotDeletes()
             for payload in self.pendingSnapshots {
                 let hash = try CanonicalSyncJSON.hash(payload)
                 guard self.lastSnapshotHashes[payload.recordName] != hash else { continue }
