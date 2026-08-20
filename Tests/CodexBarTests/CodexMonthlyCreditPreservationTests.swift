@@ -49,6 +49,19 @@ struct CodexMonthlyCreditPreservationTests {
     }
 
     @Test
+    func `successful absence with no credits snapshot is nil`() {
+        let now = Date()
+        let prior = Self.credits(limitUsed: 27, limit: 1000, remaining: 0, at: now)
+
+        let merged = CodexMonthlyCreditPreservation.merging(
+            incoming: nil,
+            prior: prior,
+            enrichmentFailed: false)
+
+        #expect(merged == nil)
+    }
+
+    @Test
     func `incoming monthly limit wins even after enrichment failure`() {
         let now = Date()
         let incoming = Self.credits(limitUsed: 40, limit: 2000, remaining: 1, at: now)
@@ -78,5 +91,80 @@ struct CodexMonthlyCreditPreservationTests {
                 remainingPercent: max(0, 100 - (limitUsed / limit * 100)),
                 resetsAt: nil,
                 updatedAt: date))
+    }
+}
+
+@MainActor
+extension CodexAccountScopedRefreshTests {
+    @Test
+    func `confirmed monthly cap absence publishes nil credits`() async {
+        let suite = "CodexMonthlyCreditPreservationTests-publish-nil"
+        let settings = self.makeSettingsStore(suite: suite)
+        settings.refreshFrequency = .manual
+        settings._test_liveSystemCodexAccount = self.liveAccount(email: "biz@example.com")
+        defer { settings._test_liveSystemCodexAccount = nil }
+
+        let store = self.makeUsageStore(settings: settings)
+        let account = CodexVisibleAccount(
+            id: "live:biz@example.com",
+            email: "biz@example.com",
+            workspaceAccountID: nil,
+            storedAccountID: nil,
+            selectionSource: .liveSystem,
+            isActive: true,
+            isLive: true,
+            canReauthenticate: false,
+            canRemove: false)
+        let usage = self.codexSnapshot(email: "biz@example.com", usedPercent: 12)
+        let prior = CreditsSnapshot(
+            remaining: 0,
+            events: [],
+            updatedAt: Date(),
+            codexCreditLimit: CodexCreditLimitSnapshot(
+                used: 27,
+                limit: 1000,
+                remainingPercent: 97.3,
+                resetsAt: nil,
+                updatedAt: Date()))
+        store.credits = prior
+        store.lastCreditsSnapshot = prior
+        store.lastCreditsSnapshotAccountKey = "biz@example.com"
+        store.lastCreditsSource = .api
+        store.codexAccountSnapshots = [
+            CodexAccountUsageSnapshot(
+                account: account,
+                snapshot: usage,
+                error: nil,
+                sourceLabel: "api",
+                credits: nil),
+        ]
+
+        let result = ProviderFetchResult(
+            usage: usage,
+            credits: nil,
+            dashboard: nil,
+            sourceLabel: "api",
+            strategyID: "stacked-test",
+            strategyKind: .apiToken,
+            codexMonthlyLimitEnrichmentFailed: false)
+        let outcome = ProviderFetchOutcome(
+            result: .success(result),
+            attempts: [ProviderFetchAttempt(
+                strategyID: "stacked-test",
+                kind: .apiToken,
+                wasAvailable: true,
+                errorDescription: nil)])
+
+        await store.applySelectedCodexVisibleAccountOutcome(
+            outcome,
+            account: account,
+            snapshot: usage,
+            sourceLabel: "api",
+            limitResetOwnerKey: nil)
+
+        #expect(store.credits == nil)
+        #expect(store.lastCreditsSnapshot == nil)
+        #expect(store.lastCreditsSource == .none)
+        #expect(store.lastCreditsSnapshotAccountKey == "biz@example.com")
     }
 }

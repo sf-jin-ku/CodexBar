@@ -1433,14 +1433,14 @@ extension UsageStore {
             let publicationGuard = Self.codexScopedRefreshGuard(for: account)
             let codexOwnerKey = Self.codexSessionQuotaOwnerKey(for: publicationGuard)
             self.lastFetchAttempts[.codex] = outcome.attempts
-            if let credits = self.codexAccountSnapshots.first(where: { $0.id == account.id })?.credits
+            let publishedCredits = self.codexAccountSnapshots.first(where: { $0.id == account.id })?.credits
                 ?? result.credits
-            {
-                self.credits = credits
+            if !result.codexMonthlyLimitEnrichmentFailed || publishedCredits != nil {
+                self.credits = publishedCredits
                 self.lastCreditsError = nil
-                self.lastCreditsSnapshot = credits
+                self.lastCreditsSnapshot = publishedCredits
                 self.lastCreditsSnapshotAccountKey = publicationGuard.accountKey
-                self.lastCreditsSource = .api
+                self.lastCreditsSource = publishedCredits == nil ? .none : .api
             }
             self.handleCodexResetCreditNotifications(snapshot: snapshot)
             self.handleQuotaWarningTransitions(
