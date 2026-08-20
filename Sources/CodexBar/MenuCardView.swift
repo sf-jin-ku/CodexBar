@@ -1093,11 +1093,12 @@ extension UsageMenuCardView.Model {
         snapshot: UsageSnapshot?,
         account: AccountInfo,
         metadata: ProviderMetadata,
-        accountIsAuthoritative: Bool) -> String
+        accountIsAuthoritative: Bool, sourceLabel: String?) -> String
     {
         // Provider-specific by design: claude-swap accountOverride is the display label
         // (alias or email · org). Other stacked sources keep fetched identity first.
-        if accountIsAuthoritative, provider == .claude, let email = account.email, !email.isEmpty {
+        if accountIsAuthoritative, provider == .claude, sourceLabel == ClaudeSwapAccountProjection.sourceLabel,
+           let email = account.email, !email.isEmpty {
             return email
         }
         if let email = snapshot?.accountEmail(for: provider), !email.isEmpty {
@@ -1246,7 +1247,8 @@ extension UsageMenuCardView.Model {
                 snapshot: input.snapshot,
                 account: input.account,
                 metadata: input.metadata,
-                accountIsAuthoritative: input.accountIsAuthoritative),
+                accountIsAuthoritative: input.accountIsAuthoritative,
+                sourceLabel: input.sourceLabel),
             isEnabled: input.hidePersonalInfo)
         let subtitleText = PersonalInfoRedactor.redactEmails(in: subtitle.text, isEnabled: input.hidePersonalInfo)
             ?? subtitle.text

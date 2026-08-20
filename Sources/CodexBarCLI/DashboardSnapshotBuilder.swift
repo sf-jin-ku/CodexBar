@@ -229,12 +229,13 @@ enum DashboardSnapshotBuilder {
                displayLabel.contains("@"),
                displayLabel == sourceEmail || displayLabel.hasPrefix(sourceEmail)
             {
-                return presentedEmail + String(displayLabel.dropFirst(sourceEmail.count))
+                let suffix = String(displayLabel.dropFirst(sourceEmail.count))
+                return presentedEmail + self.redactEmailShapedText(suffix, mode: identityMode)
             }
             if identityMode == .redacted, displayLabel.contains("@") {
                 return self.dashboardEmail(displayLabel, mode: .redacted) ?? "Account \(accountID)"
             }
-            return displayLabel
+            return self.redactEmailShapedText(displayLabel, mode: identityMode)
         }
         return displayLabel.contains("@") ? "Account \(accountID)" : displayLabel
     }
@@ -292,6 +293,32 @@ enum DashboardSnapshotBuilder {
         guard mode == .redacted else { return email }
         guard let at = email.lastIndex(of: "@") else { return "redacted" }
         return "redacted\(email[at...])"
+    }
+
+    /// Redacts every email-shaped token, including organization suffixes such as
+    /// `admin@company.com`, so Hide Personal Info cannot leak a second address.
+    private static func redactEmailShapedText(_ text: String, mode: DashboardIdentityMode) -> String {
+        guard mode == .redacted else { return text }
+        var output = ""
+        var token = ""
+        func flush() {
+            if token.contains("@"), let redacted = self.dashboardEmail(token, mode: .redacted) {
+                output.append(redacted)
+            } else {
+                output.append(token)
+            }
+            token = ""
+        }
+        for character in text {
+            if character.isWhitespace || character == "·" || character == "(" || character == ")" {
+                flush()
+                output.append(character)
+            } else {
+                token.append(character)
+            }
+        }
+        flush()
+        return output
     }
 
     private static func dashboardPlan(_ raw: String?, provider: UsageProvider) -> String? {

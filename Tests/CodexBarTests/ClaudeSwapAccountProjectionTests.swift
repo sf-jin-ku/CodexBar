@@ -272,7 +272,7 @@ struct ClaudeSwapAccountProjectionTests {
             provider: account.provider.instanceID,
             deviceID: "test-device",
             accountIdentity: account.accountEmail,
-            displayLabel: account.accountEmail ?? account.displayLabel,
+            displayLabel: account.accountEmail ?? "Account \(account.id.opaqueID)",
             usage: usage)
         let data = try JSONEncoder().encode(payload)
         let json = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
@@ -283,6 +283,24 @@ struct ClaudeSwapAccountProjectionTests {
         #expect(payload.usage.identity?.accountOrganization == nil)
         #expect(encodedUsage["accountOrganization"] == nil || encodedUsage["accountOrganization"] is NSNull)
         #expect(encodedUsage["accountEmail"] as? String == "shared@example.com")
+    }
+
+    @Test
+    func `cloud sync payload omits aliases when swap email is missing`() throws {
+        let snapshots = ClaudeSwapAccountProjection.accountSnapshots(
+            from: self.list(self.row(number: 3, email: "", alias: "Empty slot")),
+            now: self.now)
+        let account = try #require(snapshots.first)
+        let usage = try #require(account.snapshot)
+        let payload = AccountSnapshotSyncPayload(
+            provider: account.provider.instanceID,
+            deviceID: "test-device",
+            accountIdentity: "\(account.id.source):\(account.id.opaqueID)",
+            displayLabel: account.accountEmail ?? "Account \(account.id.opaqueID)",
+            usage: usage)
+        #expect(account.displayLabel == "Empty slot")
+        #expect(account.accountEmail == nil)
+        #expect(payload.displayLabel == "Account 3")
     }
 
     private func list(_ rows: ClaudeSwapAccountRow...) -> ClaudeSwapAccountList {
