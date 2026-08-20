@@ -208,6 +208,9 @@ public enum KiroUsageLimitsAPI: Sendable {
         } else {
             nil
         }
+        if let overageCap, overageUsed > overageCap {
+            throw KiroUsageLimitsError.parseError("overage usage exceeds overage cap")
+        }
 
         guard let resetsAt = self.resetDate(credit.nextDateReset ?? response.nextDateReset) else {
             throw KiroUsageLimitsError.parseError("no plausible reset date reported")

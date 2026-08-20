@@ -48,6 +48,17 @@ struct KiroUsageLimitsAPITests {
     }
 
     @Test
+    func `rejects overage that exceeds the overage cap`() throws {
+        let json = Self.overageInUseResponse
+            .replacingOccurrences(
+                of: "\"overageCapWithPrecision\":10000.0",
+                with: "\"overageCapWithPrecision\":100")
+        #expect(throws: KiroUsageLimitsError.self) {
+            try KiroUsageLimitsAPI.parse(Data(json.utf8))
+        }
+    }
+
+    @Test
     func `treats overage as unavailable when the account has it disabled`() throws {
         let json = Self.overageInUseResponse
             .replacingOccurrences(of: "\"overageStatus\":\"ENABLED\"", with: "\"overageStatus\":\"DISABLED\"")

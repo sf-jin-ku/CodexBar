@@ -172,11 +172,12 @@ public struct KiroUsageSnapshot: Sendable {
                 value: UsageFormatter.kiroCreditNumber(max(0, overageCap - overageCreditsUsed))))
         }
         if overagesEnabled, let estimatedOverageCostUSD = self.estimatedOverageCostUSD {
+            let currencyCode = self.usageLimits?.currencyCode ?? "USD"
             detailRows.append(.makeRow(
                 label: "Overage cost",
-                value: UsageFormatter.usdString(estimatedOverageCostUSD),
+                value: UsageFormatter.currencyString(estimatedOverageCostUSD, currencyCode: currencyCode),
                 secondaryValue: self.usageLimits?.overageChargeLimit
-                    .map { "of \(UsageFormatter.usdString($0))" }))
+                    .map { "of \(UsageFormatter.currencyString($0, currencyCode: currencyCode))" }))
         }
         if let contextUsage = self.contextUsage {
             detailRows.append(.makeRow(
