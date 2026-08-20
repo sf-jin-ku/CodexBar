@@ -67,7 +67,7 @@ public enum ClaudeSwapAccountProjection {
         if row.email.isEmpty {
             return "Account \(row.number)"
         }
-        guard duplicateEmails.contains(row.email) else {
+        guard duplicateEmails.contains(self.normalizedEmail(row.email)) else {
             return row.email
         }
         if !row.organizationName.isEmpty {
@@ -80,11 +80,12 @@ public enum ClaudeSwapAccountProjection {
         let candidates = rows.map { self.displayLabel(for: $0, duplicateEmails: duplicateEmails) }
         var collisionCounts: [String: Int] = [:]
         for (row, label) in zip(rows, candidates) {
-            guard duplicateEmails.contains(row.email), self.alias(from: row) == nil else { continue }
+            guard duplicateEmails.contains(self.normalizedEmail(row.email)),
+                  self.alias(from: row) == nil else { continue }
             collisionCounts[label, default: 0] += 1
         }
         return zip(rows, candidates).map { row, label in
-            guard duplicateEmails.contains(row.email),
+            guard duplicateEmails.contains(self.normalizedEmail(row.email)),
                   self.alias(from: row) == nil,
                   collisionCounts[label, default: 0] > 1
             else {
@@ -103,10 +104,16 @@ public enum ClaudeSwapAccountProjection {
 
     private static func duplicateEmails(in rows: [ClaudeSwapAccountRow]) -> Set<String> {
         var counts: [String: Int] = [:]
-        for email in rows.map(\.email) where !email.isEmpty {
-            counts[email, default: 0] += 1
+        for email in rows.map(\.email) {
+            let normalized = self.normalizedEmail(email)
+            guard !normalized.isEmpty else { continue }
+            counts[normalized, default: 0] += 1
         }
         return Set(counts.compactMap { $0.value > 1 ? $0.key : nil })
+    }
+
+    private static func normalizedEmail(_ email: String) -> String {
+        email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
 
     private static func usageSnapshot(

@@ -42,6 +42,24 @@ struct ClaudeSwapAccountAliasProjectionTests {
     }
 
     @Test
+    func `disambiguates shared emails that differ only by case`() {
+        let snapshots = ClaudeSwapAccountProjection.accountSnapshots(
+            from: self.list(
+                self.row(number: 1, email: "Shared@example.com", organizationName: "Sendbird"),
+                self.row(number: 2, email: "shared@example.com", organizationName: "Acme", active: true)),
+            now: self.now)
+
+        #expect(snapshots.map(\.displayLabel) == [
+            "shared@example.com · Acme",
+            "Shared@example.com · Sendbird",
+        ])
+        #expect(snapshots.map { $0.snapshot?.identity?.accountEmail } == [
+            "shared@example.com",
+            "Shared@example.com",
+        ])
+    }
+
+    @Test
     func `appends account ordinal when shared emails also share an organization name`() {
         let snapshots = ClaudeSwapAccountProjection.accountSnapshots(
             from: self.list(
