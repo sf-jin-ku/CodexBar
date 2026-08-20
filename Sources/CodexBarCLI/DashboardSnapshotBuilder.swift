@@ -292,33 +292,58 @@ enum DashboardSnapshotBuilder {
         return "redacted\(email[at...])"
     }
 
-    /// Redacts every email-shaped range, including internal domains (`owner@corp`),
-    /// domain literals (`owner@[192.0.2.1]`), organization suffixes, and aliases, so
-    /// Hide Personal Info cannot leak a second address or swallow surrounding alias text.
+    /// Redacts every bounded `@` address range, including apostrophes in the local part,
+    /// internal domains, and domain literals, so Hide Personal Info cannot leak a second address.
     private static func redactEmailShapedText(_ text: String, mode: DashboardIdentityMode) -> String {
         guard mode == .redacted else { return text }
-        guard let regex = try? NSRegularExpression(
-            pattern: #"[A-Za-z0-9._%+-]+@(?:\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9.-]+)"#)
-        else {
-            return text
-        }
-        let nsText = text as NSString
-        let matches = regex.matches(in: text, range: NSRange(location: 0, length: nsText.length))
         var output = ""
-        var cursor = 0
-        for match in matches {
-            if match.range.location > cursor {
-                output += nsText.substring(
-                    with: NSRange(location: cursor, length: match.range.location - cursor))
+        var cursor = text.startIndex
+        var search = text.startIndex
+        while let at = text[search...].firstIndex(of: "@") {
+            let localStart = self.emailTokenStart(in: text, before: at)
+            let domainEnd = self.emailTokenEnd(in: text, after: at)
+            if localStart < at, domainEnd > text.index(after: at) {
+                output += text[cursor..<localStart]
+                output += self.dashboardEmail(String(text[localStart..<domainEnd]), mode: .redacted) ?? "redacted"
+                cursor = domainEnd
+                search = domainEnd
+            } else {
+                search = text.index(after: at)
             }
-            let email = nsText.substring(with: match.range)
-            output += self.dashboardEmail(email, mode: .redacted) ?? "redacted"
-            cursor = match.range.upperBound
         }
-        if cursor < nsText.length {
-            output += nsText.substring(from: cursor)
-        }
+        output += text[cursor...]
         return output
+    }
+
+    private static func emailTokenStart(in text: String, before at: String.Index) -> String.Index {
+        var idx = at
+        while idx > text.startIndex {
+            let previous = text.index(before: idx)
+            if self.isEmailBoundary(text[previous]) { break }
+            idx = previous
+        }
+        return idx
+    }
+
+    private static func emailTokenEnd(in text: String, after at: String.Index) -> String.Index {
+        var idx = text.index(after: at)
+        guard idx < text.endIndex else { return idx }
+        if text[idx] == "[" {
+            while idx < text.endIndex {
+                let character = text[idx]
+                idx = text.index(after: idx)
+                if character == "]" { break }
+            }
+            return idx
+        }
+        while idx < text.endIndex, !self.isEmailBoundary(text[idx]) {
+            idx = text.index(after: idx)
+        }
+        return idx
+    }
+
+    private static func isEmailBoundary(_ character: Character) -> Bool {
+        character.isWhitespace || "()<>:,;·\"".contains(character)
     }
 
     private static func dashboardPlan(_ raw: String?, provider: UsageProvider) -> String? {
