@@ -14,6 +14,7 @@
 - Hide untouched Antigravity model families in the `codexbar serve` web dashboard, matching the menu and widgets (#3061). Thanks @urda!
 - Documented the AI Usage Limits Stream Deck plugin in the README integrations list (#3066). Thanks @lenadweb!
 - OpenCode Go: use the public authenticated usage API when `OPENCODE_API_KEY` is configured, overlaying authoritative rolling/weekly/monthly windows on local history with cookie fallback (#2879, #3065). Thanks @akshayprabhu200!
+- Claude: keep 100% claude-swap usage bars when cswap defers polling at a limit, and name the exhausted window and reset instead of showing "Usage fetch failed." (#3081). Thanks @sf-jin-ku!
 - Kiro: show overage credits spent against their cap, plus accrued charges against the overage budget. The `kiro-cli` report states credits against the plan alone and omits the overage section entirely for organization accounts, so CodexBar now reads the plan and overage ceilings from the same `GetUsageLimits` service the CLI itself calls, falling back to the CLI report when it is unavailable.
 
 ## 0.54.0 — 2026-08-18
