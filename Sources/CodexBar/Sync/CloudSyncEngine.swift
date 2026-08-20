@@ -233,9 +233,21 @@ enum CloudSyncSnapshotMigration {
         pendingDeletes.intersection(liveNames)
     }
 
-    static func retryableFailedDeletes(_ failures: [CKRecord.ID: CKError]) -> [CKRecord.ID] {
+    static func liveSnapshotRecordNames(
+        pendingRecordNames: some Sequence<String>,
+        storedRecordNames: some Sequence<String>) -> Set<String>
+    {
+        Set(pendingRecordNames).union(storedRecordNames)
+    }
+
+    static func retryableFailedDeletes(
+        _ failures: [CKRecord.ID: CKError],
+        liveNames: Set<String> = []) -> [CKRecord.ID]
+    {
         failures.compactMap { recordID, error in
-            self.retryDelay(for: error) == nil ? nil : recordID
+            guard self.retryDelay(for: error) != nil else { return nil }
+            guard !liveNames.contains(recordID.recordName) else { return nil }
+            return recordID
         }
     }
 
@@ -1176,7 +1188,10 @@ extension CloudSyncEngine {
         for error in CloudSyncSnapshotMigration.reportableFailedDeletes(failures) {
             await self.record(error: error)
         }
-        for recordID in CloudSyncSnapshotMigration.retryableFailedDeletes(failures) {
+        let liveNames = CloudSyncSnapshotMigration.liveSnapshotRecordNames(
+            pendingRecordNames: self.pendingSnapshots.map(\.recordName),
+            storedRecordNames: self.persistenceEnvelope.fleetSnapshots.keys)
+        for recordID in CloudSyncSnapshotMigration.retryableFailedDeletes(failures, liveNames: liveNames) {
             self.rememberPendingSnapshotDeletes([recordID.recordName])
             let delay = failures[recordID].flatMap(CloudSyncSnapshotMigration.retryDelay(for:)) ?? 1
             self.scheduleDeleteRetry(recordID: recordID, after: delay)

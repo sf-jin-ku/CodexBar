@@ -350,6 +350,31 @@ struct CloudSyncSnapshotMigrationDeleteRetryTests {
             ])
     }
 
+    @Test
+    func `transient delete failures do not retry live snapshots`() {
+        let zoneID = CloudSyncEngine.zoneID
+        func recordID(_ name: String) -> CKRecord.ID {
+            CKRecord.ID(recordName: name, zoneID: zoneID)
+        }
+
+        let failures: [CKRecord.ID: CKError] = [
+            recordID("snap-live"): Self.cloudKitError(.networkFailure),
+            recordID("snap-obsolete"): Self.cloudKitError(.networkFailure),
+            recordID("snap-denied"): Self.cloudKitError(.permissionFailure),
+        ]
+
+        let liveNames = CloudSyncSnapshotMigration.liveSnapshotRecordNames(
+            pendingRecordNames: ["snap-pending"],
+            storedRecordNames: ["snap-live", "snap-slot"])
+        #expect(liveNames == ["snap-pending", "snap-live", "snap-slot"])
+
+        let retryable = Set(
+            CloudSyncSnapshotMigration.retryableFailedDeletes(
+                failures,
+                liveNames: ["snap-live"]).map(\.recordName))
+        #expect(retryable == ["snap-obsolete"])
+    }
+
     private static func cloudKitError(_ code: CKError.Code, retryAfter: TimeInterval? = nil) -> CKError {
         var userInfo: [String: Any] = [:]
         if let retryAfter {
