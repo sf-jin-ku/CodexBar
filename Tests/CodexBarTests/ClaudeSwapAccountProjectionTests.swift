@@ -237,6 +237,26 @@ struct ClaudeSwapAccountProjectionTests {
     }
 
     @Test
+    func `appends account ordinal when shared emails also share an organization name`() {
+        let snapshots = ClaudeSwapAccountProjection.accountSnapshots(
+            from: self.list(
+                self.row(number: 1, email: "shared@example.com", organizationName: "Sendbird"),
+                self.row(number: 4, email: "shared@example.com", organizationName: "Sendbird", active: true)),
+            now: self.now)
+
+        #expect(snapshots.map(\.displayLabel) == [
+            "shared@example.com · Sendbird · Account 4",
+            "shared@example.com · Sendbird · Account 1",
+        ])
+        #expect(snapshots.map(\.id.opaqueID) == ["4", "1"])
+        #expect(snapshots.map { $0.snapshot?.identity?.accountEmail } == [
+            "shared@example.com",
+            "shared@example.com",
+        ])
+        #expect(snapshots.map { $0.snapshot?.identity?.accountOrganization } == [nil, nil])
+    }
+
+    @Test
     func `prefers user alias over email and empty email ordinal`() {
         let snapshots = ClaudeSwapAccountProjection.accountSnapshots(
             from: self.list(

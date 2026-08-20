@@ -24,9 +24,9 @@ public enum ClaudeSwapAccountProjection {
             return lhs.number < rhs.number
         }
         let duplicateEmails = self.duplicateEmails(in: ordered)
-        return ordered.map { row in
-            let label = self.displayLabel(for: row, duplicateEmails: duplicateEmails)
-            return ProviderAccountUsageSnapshot(
+        let labels = self.displayLabels(for: ordered, duplicateEmails: duplicateEmails)
+        return zip(ordered, labels).map { row, label in
+            ProviderAccountUsageSnapshot(
                 id: ProviderAccountIdentity(source: self.sourceName, opaqueID: String(row.number)),
                 provider: .claude,
                 displayLabel: label,
@@ -50,7 +50,7 @@ public enum ClaudeSwapAccountProjection {
     }
 
     static func displayLabel(for row: ClaudeSwapAccountRow, duplicateEmails: Set<String> = []) -> String {
-        if let alias = row.alias, !alias.isEmpty {
+        if let alias = self.alias(from: row) {
             return alias
         }
         if row.email.isEmpty {
@@ -63,6 +63,31 @@ public enum ClaudeSwapAccountProjection {
             return "\(row.email) · \(row.organizationName)"
         }
         return "\(row.email) · Account \(row.number)"
+    }
+
+    private static func displayLabels(for rows: [ClaudeSwapAccountRow], duplicateEmails: Set<String>) -> [String] {
+        let candidates = rows.map { self.displayLabel(for: $0, duplicateEmails: duplicateEmails) }
+        var collisionCounts: [String: Int] = [:]
+        for (row, label) in zip(rows, candidates) {
+            guard duplicateEmails.contains(row.email), self.alias(from: row) == nil else { continue }
+            collisionCounts[label, default: 0] += 1
+        }
+        return zip(rows, candidates).map { row, label in
+            guard duplicateEmails.contains(row.email),
+                  self.alias(from: row) == nil,
+                  collisionCounts[label, default: 0] > 1
+            else {
+                return label
+            }
+            return "\(label) · Account \(row.number)"
+        }
+    }
+
+    private static func alias(from row: ClaudeSwapAccountRow) -> String? {
+        guard let alias = row.alias?.trimmingCharacters(in: .whitespacesAndNewlines), !alias.isEmpty else {
+            return nil
+        }
+        return alias
     }
 
     private static func duplicateEmails(in rows: [ClaudeSwapAccountRow]) -> Set<String> {

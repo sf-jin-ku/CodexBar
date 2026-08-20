@@ -292,29 +292,32 @@ enum DashboardSnapshotBuilder {
         return "redacted\(email[at...])"
     }
 
-    /// Redacts every email-shaped token, including organization suffixes such as
-    /// `admin@company.com`, so Hide Personal Info cannot leak a second address.
+    /// Redacts every email-shaped range, including organization suffixes such as
+    /// `admin@company.com` and aliases like `Work:owner@example.com`, so Hide
+    /// Personal Info cannot leak a second address or swallow surrounding alias text.
     private static func redactEmailShapedText(_ text: String, mode: DashboardIdentityMode) -> String {
         guard mode == .redacted else { return text }
+        guard let regex = try? NSRegularExpression(
+            pattern: #"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"#)
+        else {
+            return text
+        }
+        let nsText = text as NSString
+        let matches = regex.matches(in: text, range: NSRange(location: 0, length: nsText.length))
         var output = ""
-        var token = ""
-        func flush() {
-            if token.contains("@"), let redacted = self.dashboardEmail(token, mode: .redacted) {
-                output.append(redacted)
-            } else {
-                output.append(token)
+        var cursor = 0
+        for match in matches {
+            if match.range.location > cursor {
+                output += nsText.substring(
+                    with: NSRange(location: cursor, length: match.range.location - cursor))
             }
-            token = ""
+            let email = nsText.substring(with: match.range)
+            output += self.dashboardEmail(email, mode: .redacted) ?? "redacted"
+            cursor = match.range.upperBound
         }
-        for character in text {
-            if character.isWhitespace || character == "·" || character == "(" || character == ")" {
-                flush()
-                output.append(character)
-            } else {
-                token.append(character)
-            }
+        if cursor < nsText.length {
+            output += nsText.substring(from: cursor)
         }
-        flush()
         return output
     }
 
