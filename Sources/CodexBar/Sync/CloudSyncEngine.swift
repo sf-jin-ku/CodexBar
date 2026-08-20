@@ -235,6 +235,15 @@ enum CloudSyncSnapshotMigration {
             self.retryDelay(for: error) == nil ? recordID.recordName : nil
         })
     }
+
+    static func abandonedReplacementNames(
+        failures: [String: CKError],
+        pendingReplacements: Set<String>) -> Set<String>
+    {
+        Set(failures.compactMap { name, error in
+            pendingReplacements.contains(name) && self.retryDelay(for: error) == nil ? name : nil
+        })
+    }
 }
 
 enum CloudSyncEntitlementGate {
@@ -871,6 +880,7 @@ actor CloudSyncEngine: CKSyncEngineDelegate {
                 self.recreateZoneAndRequeue(failure.record, syncEngine: syncEngine)
             } else {
                 await self.record(error: failure.error)
+                self.abandonTerminalReplacementSave(failure)
             }
         }
     }
@@ -1156,6 +1166,24 @@ extension CloudSyncEngine {
         }
     }
 
+    private func abandonTerminalReplacementSave(
+        _ failure: CKSyncEngine.Event.SentRecordZoneChanges.FailedRecordSave)
+    {
+        let name = failure.record.recordID.recordName
+        let abandoned = CloudSyncSnapshotMigration.abandonedReplacementNames(
+            failures: [name: failure.error],
+            pendingReplacements: Set(self.pendingPredecessorDeletes.keys))
+        guard abandoned.contains(name),
+              self.pendingPredecessorDeletes.removeValue(forKey: name) != nil
+        else { return }
+        if self.lastSnapshotHashes[name] == nil,
+           let payload = self.persistenceEnvelope.fleetSnapshots[name],
+           let hash = try? CanonicalSyncJSON.hash(payload)
+        {
+            self.lastSnapshotHashes[name] = hash
+        }
+    }
+
     private func scheduleDeleteRetry(recordID: CKRecord.ID, after delay: TimeInterval) {
         Task { [weak self] in
             do {
@@ -1200,8 +1228,9 @@ extension CloudSyncEngine {
                 if predecessors.isEmpty {
                     self.lastSnapshotHashes[payload.recordName] = hash
                 } else {
-                    // Keep the hash unset until CloudKit confirms the replacement save so a
-                    // failed send can retry, and so the predecessor is not deleted first.
+                    // Keep the hash unset until CloudKit confirms the replacement save, or a
+                    // terminal save failure abandons this payload, so the predecessor is not
+                    // deleted first and recoverable failures can still retry.
                     self.pendingPredecessorDeletes[payload.recordName, default: []].formUnion(predecessors)
                 }
                 engine.state.add(pendingRecordZoneChanges: [.saveRecord(recordID)])

@@ -380,6 +380,34 @@ struct CloudSyncSnapshotMigrationSaveThenDeleteTests {
         #expect(pending.isEmpty)
     }
 
+    @Test
+    func `terminal replacement save failures stop retrying the same payload`() {
+        let slot = "snap-claude-slot-device-id"
+        let failures = [
+            slot: Self.cloudKitError(.permissionFailure),
+            "snap-other": Self.cloudKitError(.networkFailure),
+            "snap-quota": Self.cloudKitError(.quotaExceeded, retryAfter: 12),
+        ]
+
+        #expect(
+            CloudSyncSnapshotMigration.abandonedReplacementNames(
+                failures: failures,
+                pendingReplacements: [slot, "snap-quota"]) == [slot])
+        #expect(
+            CloudSyncSnapshotMigration.abandonedReplacementNames(
+                failures: [slot: Self.cloudKitError(.networkFailure)],
+                pendingReplacements: [slot]).isEmpty)
+    }
+
+    private static func cloudKitError(_ code: CKError.Code, retryAfter: TimeInterval? = nil) -> CKError {
+        var userInfo: [String: Any] = [:]
+        if let retryAfter {
+            userInfo[CKErrorRetryAfterKey] = NSNumber(value: retryAfter)
+        }
+        let nsError = NSError(domain: CKErrorDomain, code: code.rawValue, userInfo: userInfo)
+        return CKError(_nsError: nsError)
+    }
+
     private static func claudeSnapshot(accountID: String, email: String) -> AccountSnapshotSyncPayload {
         let usage = UsageSnapshot(
             primary: nil,
