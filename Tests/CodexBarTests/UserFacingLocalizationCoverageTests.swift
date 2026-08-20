@@ -164,7 +164,7 @@ struct UserFacingLocalizationCoverageTests {
 
         let section = try #require(localized.first)
         #expect(section.rows.map(\.label) == ["超额用量", "超额费用"])
-        #expect(section.rows.map(\.value) == ["3603.49 credits", "$144.14"])
+        #expect(section.rows.map(\.value) == ["3603.49 额度", "$144.14"])
         #expect(section.rows.map(\.secondaryValue) == ["/ 10000", "/ $400.00"])
     }
 

@@ -48,14 +48,14 @@ struct KiroUsageLimitsAPITests {
     }
 
     @Test
-    func `clamps overage that exceeds the overage cap`() throws {
+    func `keeps overage that exceeds the overage cap`() throws {
         let json = Self.overageInUseResponse
             .replacingOccurrences(
                 of: "\"overageCapWithPrecision\":10000.0",
                 with: "\"overageCapWithPrecision\":100")
         let limits = try KiroUsageLimitsAPI.parse(Data(json.utf8))
         #expect(limits.overageCap == 100)
-        #expect(limits.overageUsed == 100)
+        #expect(limits.overageUsed == 3603.49)
     }
 
     @Test

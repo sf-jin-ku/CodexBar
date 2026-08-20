@@ -73,8 +73,12 @@ extension UsageMenuCardView.Model {
 
     private static func localizedKiroCapPhrase(_ value: String) -> String {
         let prefix = "of "
-        guard value.hasPrefix(prefix) else { return value }
-        return L("of %@", String(value.dropFirst(prefix.count)))
+        if value.hasPrefix(prefix) {
+            return L("of %@", String(value.dropFirst(prefix.count)))
+        }
+        let suffix = " credits"
+        guard value.hasSuffix(suffix) else { return value }
+        return "\(String(value.dropLast(suffix.count))) \(L("credits"))"
     }
 
     private static func localizedTokenSuffix(_ value: String) -> String {

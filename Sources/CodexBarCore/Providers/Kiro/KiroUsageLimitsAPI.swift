@@ -213,12 +213,6 @@ public enum KiroUsageLimitsAPI: Sendable {
         } else {
             nil
         }
-        let boundedOverageUsed = if let overageCap {
-            min(overageUsed, overageCap)
-        } else {
-            overageUsed
-        }
-
         guard let resetsAt = self.resetDate(credit.nextDateReset ?? response.nextDateReset) else {
             throw KiroUsageLimitsError.parseError("no plausible reset date reported")
         }
@@ -226,7 +220,7 @@ public enum KiroUsageLimitsAPI: Sendable {
         return KiroUsageLimits(
             planLimit: planLimit,
             planUsed: planUsed,
-            overageUsed: boundedOverageUsed,
+            overageUsed: overageUsed,
             overageCap: overageCap,
             overageEnabled: overageEnabled,
             overageCharges: credit.overageCharges.flatMap { $0.isFinite && $0 >= 0 ? $0 : nil },
