@@ -683,4 +683,23 @@ struct ClaudeSwapAccountProjectionTests {
         #expect(account.snapshot == nil)
         #expect(account.error == "Polling deferred until a limit resets.")
     }
+
+    @Test
+    func `previous accounts prefer in-memory snapshots over an empty cache load`() {
+        let previous = ClaudeSwapAccountProjection.accountSnapshots(
+            from: ClaudeSwapAccountList(
+                activeAccountNumber: 1,
+                accounts: [
+                    ClaudeSwapAccountRow(
+                        number: 1,
+                        email: "work@example.com",
+                        isActive: true,
+                        usageStatus: .ok,
+                        fiveHour: ClaudeSwapUsageWindow(usedPercent: 40, resetsAt: nil),
+                        sevenDay: nil),
+                ]),
+            now: self.now)
+        #expect(ClaudeSwapRetainedUsageStore.previousAccounts(inMemory: previous).count == previous.count)
+        #expect(ClaudeSwapRetainedUsageStore.previousAccounts(inMemory: []).isEmpty)
+    }
 }

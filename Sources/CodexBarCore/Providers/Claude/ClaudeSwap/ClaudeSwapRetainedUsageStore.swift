@@ -20,6 +20,14 @@ public enum ClaudeSwapRetainedUsageStore {
         return records.map(\.account)
     }
 
+    /// After a relaunch the in-memory array is empty even when this cache still
+    /// holds complete windows, so fall back to disk only when nothing is in memory.
+    public static func previousAccounts(
+        inMemory: [ProviderAccountUsageSnapshot]) -> [ProviderAccountUsageSnapshot]
+    {
+        inMemory.isEmpty ? self.load() : inMemory
+    }
+
     public static func save(_ accounts: [ProviderAccountUsageSnapshot]) {
         guard let url = self.resolvedFileURL() else { return }
         let records = accounts.compactMap(Record.init(account:))

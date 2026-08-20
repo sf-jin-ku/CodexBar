@@ -132,7 +132,7 @@ enum CLIClaudeSwapCards {
 
         do {
             let list = try await accountListReader(executablePath)
-            let retained = previousAccounts.isEmpty ? ClaudeSwapRetainedUsageStore.load() : previousAccounts
+            let retained = ClaudeSwapRetainedUsageStore.previousAccounts(inMemory: previousAccounts)
             let accounts = ClaudeSwapAccountProjection.accountSnapshots(
                 from: list,
                 previousAccounts: retained,
