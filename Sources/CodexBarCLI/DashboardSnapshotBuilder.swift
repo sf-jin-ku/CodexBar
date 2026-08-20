@@ -232,9 +232,6 @@ enum DashboardSnapshotBuilder {
                 let suffix = String(displayLabel.dropFirst(sourceEmail.count))
                 return presentedEmail + self.redactEmailShapedText(suffix, mode: identityMode)
             }
-            if identityMode == .redacted, displayLabel.contains("@") {
-                return self.dashboardEmail(displayLabel, mode: .redacted) ?? "Account \(accountID)"
-            }
             return self.redactEmailShapedText(displayLabel, mode: identityMode)
         }
         return displayLabel.contains("@") ? "Account \(accountID)" : displayLabel
