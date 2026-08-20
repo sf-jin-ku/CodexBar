@@ -192,6 +192,14 @@ struct CodexSpendControlsMonthlyUsageTests {
     }
 
     @Test
+    func `absent cap overrides malformed current month usage`() throws {
+        let absent = try self.decodeMonthlyUsage(#"{"current_month_usage":{"amount":12}}"#)
+
+        #expect(absent.codexCreditLimitSnapshot(updatedAt: Date()) == nil)
+        #expect(!absent.monthlyLimitMappingFailed)
+    }
+
+    @Test
     func `monthly usage clamps negative usage and accepts numeric strings`() throws {
         let response = try self.decodeMonthlyUsage(self.monthlyUsageJSON(usage: #""-20""#, limit: #""7000""#))
         let snapshot = try #require(response.codexCreditLimitSnapshot(updatedAt: Date()))
@@ -381,6 +389,27 @@ struct CodexSpendControlsMonthlyUsageTests {
 
         #expect(result.credits == original.credits)
         #expect(result.codexMonthlyLimitEnrichmentFailed)
+    }
+
+    @Test
+    func `O auth helper treats absent cap as confirmed despite malformed usage`() async throws {
+        let usageJSON = self.educationUsageJSON()
+        let usage = try self.decodeUsage(usageJSON)
+        let original = try CodexOAuthFetchStrategy._mapResultForTesting(
+            Data(usageJSON.utf8),
+            credentials: self.makeCredentials())
+        let payload = try self.decodeMonthlyUsage(#"{"current_month_usage":{"amount":12}}"#)
+
+        let result = try await CodexOAuthFetchStrategy._applySpendControlsMonthlyLimitForTesting(
+            original,
+            usage: usage,
+            credentials: self.makeCredentials(accountId: "credential-account"),
+            context: self.makeContext(),
+            fetcher: { _ in payload })
+
+        #expect(result.credits == original.credits)
+        #expect(result.credits?.codexCreditLimit == nil)
+        #expect(!result.codexMonthlyLimitEnrichmentFailed)
     }
 
     @Test

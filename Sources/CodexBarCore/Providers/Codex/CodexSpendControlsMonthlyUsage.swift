@@ -24,8 +24,9 @@ public struct CodexSpendControlsMonthlyUsageResponse: Decodable, Sendable {
 
     public var monthlyLimitMappingFailed: Bool {
         if self.hasInactiveEnforcement { return false }
+        if self.effectiveMonthlyLimit?.limitWasUnmappable == true { return true }
+        guard self.effectiveMonthlyLimit?.limit ?? 0 > 0 else { return false }
         return self.currentMonthUsageWasUnmappable
-            || self.effectiveMonthlyLimit?.limitWasUnmappable == true
     }
 
     private var hasInactiveEnforcement: Bool {
