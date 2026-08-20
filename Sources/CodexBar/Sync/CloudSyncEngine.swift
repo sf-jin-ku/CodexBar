@@ -226,6 +226,13 @@ enum CloudSyncSnapshotMigration {
         }
     }
 
+    static func cancelledPersistedDeletes(
+        pendingDeletes: Set<String>,
+        liveNames: Set<String>) -> Set<String>
+    {
+        pendingDeletes.intersection(liveNames)
+    }
+
     static func retryableFailedDeletes(_ failures: [CKRecord.ID: CKError]) -> [CKRecord.ID] {
         failures.compactMap { recordID, error in
             self.retryDelay(for: error) == nil ? nil : recordID
@@ -1189,6 +1196,15 @@ extension CloudSyncEngine {
         self.persistEnvelope()
     }
 
+    private func cancelPendingSnapshotDeletes(_ names: Set<String>) {
+        guard !names.isEmpty else { return }
+        self.forgetPendingSnapshotDeletes(names)
+        guard let engine = self.engine else { return }
+        engine.state.remove(pendingRecordZoneChanges: names.map { name in
+            .deleteRecord(self.recordID(named: name))
+        })
+    }
+
     private func requeuePendingSnapshotDeletes() {
         guard let engine = self.engine else { return }
         for name in self.persistenceEnvelope.pendingSnapshotDeletes {
@@ -1223,6 +1239,9 @@ extension CloudSyncEngine {
                 }
                 await Task.yield()
                 guard let self, await self.enabled else { return }
+                guard await self.persistenceEnvelope.pendingSnapshotDeletes.contains(recordID.recordName) else {
+                    return
+                }
                 guard let engine = await self.engine,
                       CloudSyncSnapshotMigration.shouldResumeDelayedRetry(
                           originatingEngine: originatingEngine,
@@ -1249,6 +1268,10 @@ extension CloudSyncEngine {
             CloudSyncSnapshotMigration.retainingObsoletePredecessors(
                 in: &self.pendingPredecessorDeletes,
                 obsoleteNames: obsoleteNames)
+            self.cancelPendingSnapshotDeletes(
+                CloudSyncSnapshotMigration.cancelledPersistedDeletes(
+                    pendingDeletes: self.persistenceEnvelope.pendingSnapshotDeletes,
+                    liveNames: Set(self.pendingSnapshots.map(\.recordName))))
             for payload in self.pendingSnapshots {
                 let hash = try CanonicalSyncJSON.hash(payload)
                 guard self.lastSnapshotHashes[payload.recordName] != hash else { continue }

@@ -403,6 +403,21 @@ struct CloudSyncSnapshotMigrationSaveThenDeleteTests {
     }
 
     @Test
+    func `persisted deletes are cancelled when the predecessor is live again`() throws {
+        let slot = Self.claudeSnapshot(accountID: "claude-swap:2", email: "owner@example.com")
+        let predecessor = try #require(slot.emailKeyedPredecessorRecordName())
+
+        #expect(
+            CloudSyncSnapshotMigration.cancelledPersistedDeletes(
+                pendingDeletes: [predecessor, "snap-claude-stale-device-id"],
+                liveNames: [predecessor]) == [predecessor])
+        #expect(
+            CloudSyncSnapshotMigration.cancelledPersistedDeletes(
+                pendingDeletes: ["snap-claude-stale-device-id"],
+                liveNames: [predecessor]).isEmpty)
+    }
+
+    @Test
     func `terminal replacement save failures stop retrying the same payload`() {
         let slot = "snap-claude-slot-device-id"
         let failures = [
