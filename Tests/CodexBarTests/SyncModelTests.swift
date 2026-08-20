@@ -177,6 +177,55 @@ struct SyncModelTests {
     }
 
     @Test
+    func `slot keyed snapshot names the leftover email keyed CloudKit record`() {
+        let payload = Self.claudeSnapshot(accountID: "claude-swap:2", email: "Owner@Example.com")
+        let emailKey = AccountSnapshotSyncPayload.accountKey(for: "owner@example.com")
+
+        #expect(payload.emailKeyedPredecessorRecordName() == "snap-claude-\(emailKey)-device-id")
+        #expect(payload.recordName != payload.emailKeyedPredecessorRecordName())
+    }
+
+    @Test
+    func `email keyed snapshot has no CloudKit predecessor`() {
+        let payload = Self.claudeSnapshot(accountID: "owner@example.com", email: "owner@example.com")
+
+        #expect(payload.emailKeyedPredecessorRecordName() == nil)
+    }
+
+    @Test
+    func `obsolete email keyed names skip live records and unknown CloudKit keys`() throws {
+        let slot = Self.claudeSnapshot(accountID: "claude-swap:2", email: "owner@example.com")
+        let oauth = Self.claudeSnapshot(accountID: "owner@example.com", email: "owner@example.com")
+        let predecessor = try #require(slot.emailKeyedPredecessorRecordName())
+
+        #expect(
+            AccountSnapshotSyncPayload.obsoleteEmailKeyedRecordNames(
+                liveSnapshots: [slot],
+                knownRecordNames: [predecessor]) == [predecessor])
+        #expect(
+            AccountSnapshotSyncPayload.obsoleteEmailKeyedRecordNames(
+                liveSnapshots: [slot, oauth],
+                knownRecordNames: [predecessor]).isEmpty)
+        #expect(
+            AccountSnapshotSyncPayload.obsoleteEmailKeyedRecordNames(
+                liveSnapshots: [slot],
+                knownRecordNames: []).isEmpty)
+    }
+
+    @Test
+    func `duplicate swap slots sharing a mailbox retire one email keyed record`() throws {
+        let first = Self.claudeSnapshot(accountID: "claude-swap:1", email: "shared@example.com")
+        let second = Self.claudeSnapshot(accountID: "claude-swap:2", email: "shared@example.com")
+        let predecessor = try #require(first.emailKeyedPredecessorRecordName())
+
+        #expect(second.emailKeyedPredecessorRecordName() == predecessor)
+        #expect(
+            AccountSnapshotSyncPayload.obsoleteEmailKeyedRecordNames(
+                liveSnapshots: [first, second],
+                knownRecordNames: [predecessor]) == [predecessor])
+    }
+
+    @Test
     func `account snapshot ignores retired provider payload keys`() throws {
         let legacy = #"""
         {
@@ -218,6 +267,25 @@ struct SyncModelTests {
         #expect(decoded.provider == .openrouter)
         #expect(decoded.usage.details.isEmpty)
         #expect(decoded.usage.updatedAt == decoded.fetchedAt)
+    }
+
+    private static func claudeSnapshot(accountID: String, email: String) -> AccountSnapshotSyncPayload {
+        let usage = UsageSnapshot(
+            primary: nil,
+            secondary: nil,
+            updatedAt: Date(timeIntervalSince1970: 100),
+            identity: ProviderIdentitySnapshot(
+                providerID: .claude,
+                accountEmail: email,
+                accountOrganization: nil,
+                loginMethod: "claude-swap",
+                accountID: accountID))
+        return AccountSnapshotSyncPayload(
+            provider: .claude,
+            deviceID: "device-id",
+            accountIdentity: accountID,
+            displayLabel: email,
+            usage: usage)
     }
 }
 

@@ -225,6 +225,38 @@ public struct AccountSnapshotSyncPayload: Codable, Sendable {
         }
         return CanonicalSyncJSON.hash(data: Data(identity.lowercased().utf8))
     }
+
+    /// CloudKit record IDs cannot be renamed. When this snapshot is keyed by a distinct
+    /// account ID that replaced a mailbox identity, the previous email-keyed record on the
+    /// same device is the predecessor that must be deleted after the replacement is saved.
+    public func emailKeyedPredecessorRecordName() -> String? {
+        let accountID = self.usage.identity?.accountID?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !accountID.isEmpty else { return nil }
+        let emailKey = Self.accountKey(for: self.usage.identity?.accountEmail)
+        guard emailKey != "default",
+              Self.accountKey(for: accountID) == self.accountKey,
+              emailKey != self.accountKey
+        else {
+            return nil
+        }
+        return "snap-\(self.provider.rawValue)-\(emailKey)-\(self.deviceID)"
+    }
+
+    public static func obsoleteEmailKeyedRecordNames(
+        liveSnapshots: [AccountSnapshotSyncPayload],
+        knownRecordNames: Set<String>) -> Set<String>
+    {
+        let liveNames = Set(liveSnapshots.map(\.recordName))
+        var obsolete: Set<String> = []
+        for snapshot in liveSnapshots {
+            guard let predecessor = snapshot.emailKeyedPredecessorRecordName(),
+                  !liveNames.contains(predecessor),
+                  knownRecordNames.contains(predecessor)
+            else { continue }
+            obsolete.insert(predecessor)
+        }
+        return obsolete
+    }
 }
 
 public struct SyncedPreferences: Codable, Sendable {
