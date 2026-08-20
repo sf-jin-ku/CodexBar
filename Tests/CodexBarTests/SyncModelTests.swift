@@ -399,6 +399,23 @@ struct CloudSyncSnapshotMigrationSaveThenDeleteTests {
                 pendingReplacements: [slot]).isEmpty)
     }
 
+    @Test
+    func `delayed delete retries do not resume on a replacement sync engine`() {
+        let original = NSObject()
+        #expect(
+            CloudSyncSnapshotMigration.shouldResumeDelayedRetry(
+                originatingEngine: ObjectIdentifier(original),
+                currentEngine: ObjectIdentifier(original)))
+        #expect(
+            !CloudSyncSnapshotMigration.shouldResumeDelayedRetry(
+                originatingEngine: ObjectIdentifier(original),
+                currentEngine: ObjectIdentifier(NSObject())))
+        #expect(
+            !CloudSyncSnapshotMigration.shouldResumeDelayedRetry(
+                originatingEngine: ObjectIdentifier(original),
+                currentEngine: nil))
+    }
+
     private static func cloudKitError(_ code: CKError.Code, retryAfter: TimeInterval? = nil) -> CKError {
         var userInfo: [String: Any] = [:]
         if let retryAfter {

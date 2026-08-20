@@ -244,6 +244,14 @@ enum CloudSyncSnapshotMigration {
             pendingReplacements.contains(name) && self.retryDelay(for: error) == nil ? name : nil
         })
     }
+
+    static func shouldResumeDelayedRetry(
+        originatingEngine: ObjectIdentifier?,
+        currentEngine: ObjectIdentifier?) -> Bool
+    {
+        guard let originatingEngine, let currentEngine else { return false }
+        return originatingEngine == currentEngine
+    }
 }
 
 enum CloudSyncEntitlementGate {
@@ -1186,14 +1194,22 @@ extension CloudSyncEngine {
 
     private func scheduleDeleteRetry(recordID: CKRecord.ID, after delay: TimeInterval) {
         Task { [weak self] in
+            let originatingEngine = await self?.engine.map { ObjectIdentifier($0) }
             do {
                 if delay > 0 {
                     try await Task.sleep(for: .seconds(delay))
                 }
                 await Task.yield()
-                guard let self, let engine = await self.engine, await self.enabled else { return }
+                guard let self, await self.enabled else { return }
+                guard let engine = await self.engine,
+                      CloudSyncSnapshotMigration.shouldResumeDelayedRetry(
+                          originatingEngine: originatingEngine,
+                          currentEngine: ObjectIdentifier(engine))
+                else { return }
                 engine.state.add(pendingRecordZoneChanges: [.deleteRecord(recordID)])
                 try await engine.sendChanges(.init(scope: .recordIDs([recordID])))
+            } catch is CancellationError {
+                return
             } catch {
                 await self?.record(error: error)
             }
