@@ -1104,9 +1104,9 @@ extension UsageMenuCardView.Model {
         }
         // Provider-specific by design: Cursor app auth can expose only a subject ID, so its card needs this fallback.
         if input.provider == .cursor,
-           let accountID = input.snapshot?.identity(for: .cursor)?.accountID?
-               .trimmingCharacters(in: .whitespacesAndNewlines),
-           !accountID.isEmpty
+            let accountID = input.snapshot?.identity(for: .cursor)?.accountID?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+            !accountID.isEmpty
         {
             return accountID.split(separator: "|", omittingEmptySubsequences: true).last.map(String.init) ?? accountID
         }
