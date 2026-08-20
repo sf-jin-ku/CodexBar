@@ -84,17 +84,23 @@ public enum ClaudeSwapAccountProjection {
         now: Date) -> UsageSnapshot?
     {
         guard let previous, let snapshot = previous.snapshot else { return nil }
-        let previousEmail = previous.snapshot?.identity?.accountEmail ?? previous.displayLabel
-        let rowEmail = self.displayLabel(for: row)
-        if !previousEmail.isEmpty, !rowEmail.isEmpty, previousEmail != rowEmail {
+        guard let previousFingerprint = ClaudeSwapRetainedUsageStore.fingerprint(from: previous) else {
             return nil
         }
-        return self.prunedAtLimitSnapshot(snapshot, now: now)
+        let rowFingerprint = ClaudeSwapRetainedUsageStore.fingerprint(
+            email: row.email,
+            slot: String(row.number))
+        guard previousFingerprint == rowFingerprint else { return nil }
+        return self.prunedAtLimitSnapshot(snapshot, identity: self.identitySnapshot(for: row), now: now)
     }
 
     /// Drops windows whose reset is in the past so a mixed snapshot cannot keep showing
     /// an already-reset lane as "Resets now" just because a sibling is still exhausted.
-    private static func prunedAtLimitSnapshot(_ snapshot: UsageSnapshot, now: Date) -> UsageSnapshot? {
+    private static func prunedAtLimitSnapshot(
+        _ snapshot: UsageSnapshot,
+        identity: ProviderIdentitySnapshot?,
+        now: Date) -> UsageSnapshot?
+    {
         let primary = self.unexpiredWindow(snapshot.primary, now: now)
         let secondary = self.unexpiredWindow(snapshot.secondary, now: now)
         let extra = (snapshot.extraRateWindows ?? []).compactMap { named -> NamedRateWindow? in
@@ -114,7 +120,7 @@ public enum ClaudeSwapAccountProjection {
             secondary: secondary,
             extraRateWindows: extra.isEmpty ? nil : extra,
             updatedAt: snapshot.updatedAt,
-            identity: snapshot.identity,
+            identity: identity,
             dataConfidence: snapshot.dataConfidence)
     }
 
@@ -146,11 +152,15 @@ public enum ClaudeSwapAccountProjection {
             secondary: secondary,
             extraRateWindows: scoped.isEmpty ? nil : scoped,
             updatedAt: now,
-            identity: ProviderIdentitySnapshot(
-                providerID: .claude,
-                accountEmail: self.displayLabel(for: row),
-                accountOrganization: nil,
-                loginMethod: self.sourceLabel))
+            identity: self.identitySnapshot(for: row))
+    }
+
+    private static func identitySnapshot(for row: ClaudeSwapAccountRow) -> ProviderIdentitySnapshot {
+        ProviderIdentitySnapshot(
+            providerID: .claude,
+            accountEmail: self.displayLabel(for: row),
+            accountOrganization: nil,
+            loginMethod: self.sourceLabel)
     }
 
     private static func scopedRateWindows(for row: ClaudeSwapAccountRow) -> [NamedRateWindow] {

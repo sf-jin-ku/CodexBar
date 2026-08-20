@@ -524,4 +524,136 @@ struct ClaudeSwapAccountProjectionTests {
         let snapshot = try #require(ClaudeSwapAccountProjection.accountSnapshots(from: list, now: self.now).first)
         #expect(snapshot.displayLabel == "Account 3")
     }
+
+    @Test
+    func `unavailable retain ignores cached windows after the slot account changes`() throws {
+        let reset = Date(timeIntervalSince1970: 1_782_259_200)
+        let previous = ClaudeSwapAccountProjection.accountSnapshots(
+            from: ClaudeSwapAccountList(
+                activeAccountNumber: 1,
+                accounts: [
+                    ClaudeSwapAccountRow(
+                        number: 1,
+                        email: "old@example.com",
+                        isActive: true,
+                        usageStatus: .ok,
+                        fiveHour: ClaudeSwapUsageWindow(usedPercent: 100, resetsAt: reset),
+                        sevenDay: nil),
+                ]),
+            now: self.now)
+        let cached = ClaudeSwapRetainedUsageStore.snapshotsForRetention(previous)
+        let list = ClaudeSwapAccountList(
+            activeAccountNumber: 1,
+            accounts: [
+                ClaudeSwapAccountRow(
+                    number: 1,
+                    email: "new@example.com",
+                    isActive: true,
+                    usageStatus: .unavailable,
+                    fiveHour: nil,
+                    sevenDay: nil),
+            ])
+
+        let account = try #require(
+            ClaudeSwapAccountProjection.accountSnapshots(
+                from: list,
+                previousAccounts: cached,
+                now: self.now).first)
+        #expect(account.displayLabel == "new@example.com")
+        #expect(account.snapshot == nil)
+        #expect(account.error == "Polling deferred until a limit resets.")
+    }
+
+    @Test
+    func `unavailable retain keeps cached windows for the same slot account`() throws {
+        let reset = Date(timeIntervalSince1970: 1_782_259_200)
+        let previous = ClaudeSwapAccountProjection.accountSnapshots(
+            from: ClaudeSwapAccountList(
+                activeAccountNumber: 1,
+                accounts: [
+                    ClaudeSwapAccountRow(
+                        number: 1,
+                        email: "same@example.com",
+                        isActive: true,
+                        usageStatus: .ok,
+                        fiveHour: ClaudeSwapUsageWindow(usedPercent: 100, resetsAt: reset),
+                        sevenDay: nil),
+                ]),
+            now: self.now)
+        let cached = ClaudeSwapRetainedUsageStore.snapshotsForRetention(previous)
+        let list = ClaudeSwapAccountList(
+            activeAccountNumber: 1,
+            accounts: [
+                ClaudeSwapAccountRow(
+                    number: 1,
+                    email: "same@example.com",
+                    isActive: true,
+                    usageStatus: .unavailable,
+                    fiveHour: nil,
+                    sevenDay: nil),
+            ])
+
+        let account = try #require(
+            ClaudeSwapAccountProjection.accountSnapshots(
+                from: list,
+                previousAccounts: cached,
+                now: self.now).first)
+        #expect(account.snapshot?.primary?.usedPercent == 100)
+        #expect(account.snapshot?.identity?.accountEmail == "same@example.com")
+        #expect(account.error?.contains("Session limit reached") == true)
+    }
+
+    @Test
+    func `unavailable retain ignores a cache entry with no account discriminator`() throws {
+        let reset = Date(timeIntervalSince1970: 1_782_259_200)
+        let previous = ClaudeSwapAccountProjection.accountSnapshots(
+            from: ClaudeSwapAccountList(
+                activeAccountNumber: 1,
+                accounts: [
+                    ClaudeSwapAccountRow(
+                        number: 1,
+                        email: "old@example.com",
+                        isActive: true,
+                        usageStatus: .ok,
+                        fiveHour: ClaudeSwapUsageWindow(usedPercent: 100, resetsAt: reset),
+                        sevenDay: nil),
+                ]),
+            now: self.now)
+        let stripped = previous.map { account in
+            ProviderAccountUsageSnapshot(
+                id: account.id,
+                provider: account.provider,
+                displayLabel: "",
+                isActive: account.isActive,
+                snapshot: account.snapshot.map { snapshot in
+                    UsageSnapshot(
+                        primary: snapshot.primary,
+                        secondary: snapshot.secondary,
+                        extraRateWindows: snapshot.extraRateWindows,
+                        updatedAt: snapshot.updatedAt,
+                        identity: nil)
+                },
+                error: nil,
+                sourceLabel: account.sourceLabel)
+        }
+        let list = ClaudeSwapAccountList(
+            activeAccountNumber: 1,
+            accounts: [
+                ClaudeSwapAccountRow(
+                    number: 1,
+                    email: "old@example.com",
+                    isActive: true,
+                    usageStatus: .unavailable,
+                    fiveHour: nil,
+                    sevenDay: nil),
+            ])
+
+        let account = try #require(
+            ClaudeSwapAccountProjection.accountSnapshots(
+                from: list,
+                previousAccounts: stripped,
+                now: self.now).first)
+        #expect(account.snapshot == nil)
+        #expect(account.error == "Polling deferred until a limit resets.")
+    }
 }
