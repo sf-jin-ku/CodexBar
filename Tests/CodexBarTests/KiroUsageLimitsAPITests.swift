@@ -270,4 +270,37 @@ struct KiroUsageLimitsAPITests {
         #expect(usage.extraRateWindows?.contains { $0.id == "kiro-overage" } == true)
         #expect(usage.providerCost?.limit == 400)
     }
+
+    @Test
+    func `cancellation during usage limits enrichment is preserved`() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("codexbar-kiro-limits-cancel-\(UUID().uuidString)", isDirectory: true)
+        let cliURL = root.appendingPathComponent("kiro-cli")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try """
+        #!/bin/sh
+        if [ "$1" = "whoami" ]; then
+          printf 'Logged in with Google\\nEmail: person@example.com\\n'
+          exit 0
+        fi
+        if [ "$1" = "chat" ] && [ "$3" = "/usage" ]; then
+          printf 'Estimated Usage | resets on 2026-09-01 | KIRO POWER\\n'
+          printf 'Credits (10000.00 of 10000 covered in plan)\\n'
+          printf '████████████████████████████████████████████████████████████████████████████████ 100%%\\n'
+          exit 0
+        fi
+        if [ "$1" = "chat" ] && [ "$3" = "/context" ]; then
+          exit 0
+        fi
+        exit 1
+        """.write(to: cliURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: cliURL.path)
+
+        await #expect(throws: CancellationError.self) {
+            try await KiroStatusProbe(
+                cliBinaryResolver: { cliURL.path },
+                usageLimitsFetcher: { throw CancellationError() }).fetch()
+        }
+    }
 }

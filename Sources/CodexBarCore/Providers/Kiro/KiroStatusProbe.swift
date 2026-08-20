@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 #if canImport(Darwin)
 import Darwin
 #elseif canImport(Glibc)
@@ -408,7 +411,8 @@ public struct KiroStatusProbe: Sendable {
         } catch KiroStatusProbeError.parseError where accountStatus == .notLoggedIn {
             throw KiroStatusProbeError.notLoggedIn
         }
-        return await snapshot.withUsageLimits(self.fetchUsageLimits())
+        let limits = try await self.fetchUsageLimits()
+        return snapshot.withUsageLimits(limits)
     }
 
     /// Enriches the CLI report with the plan/overage ceilings only the API states.
@@ -417,10 +421,15 @@ public struct KiroStatusProbe: Sendable {
     /// move, whereas the CLI report reads nothing but its own published output. A failure leaves the
     /// plan-relative numbers the CLI already produced. The CLI runs first here, so any token it
     /// refreshed along the way is already in place by the time this reads it.
-    private func fetchUsageLimits() async -> KiroUsageLimits? {
+    private func fetchUsageLimits() async throws -> KiroUsageLimits? {
         do {
             return try await self.usageLimitsFetcher()
+        } catch is CancellationError {
+            throw CancellationError()
         } catch {
+            if Task.isCancelled || (error as? URLError)?.code == .cancelled {
+                throw CancellationError()
+            }
             Self.logger.debug("Kiro usage API unavailable: \(error.localizedDescription)")
             return nil
         }
