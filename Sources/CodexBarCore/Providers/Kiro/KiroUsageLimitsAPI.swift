@@ -24,7 +24,7 @@ public struct KiroUsageLimits: Equatable, Sendable {
     public let overageUsed: Double
     /// Maximum overage credits the account may spend, or nil when overage is not enabled.
     public let overageCap: Double?
-    /// `true`/`false` when the API stated ENABLED/DISABLED; `nil` when the status was omitted or unrecognized.
+    /// `true`/`false` when the API stated ENABLED/DISABLED; `nil` when omitted, unrecognized, or ENABLED without a cap.
     public let overageEnabled: Bool?
     /// Charges accrued for `overageUsed`, in `currencyCode`.
     public let overageCharges: Double?
@@ -207,12 +207,14 @@ public enum KiroUsageLimitsAPI: Sendable {
             throw KiroUsageLimitsError.parseError("plan usage exceeds plan limit")
         }
 
-        let overageEnabled = self.overageAvailability(response.overageConfiguration?.overageStatus)
-        let overageCap: Double? = if overageEnabled == true, let cap = credit.overageCapWithPrecision {
+        let overageAvailability = self.overageAvailability(response.overageConfiguration?.overageStatus)
+        let overageCap: Double? = if overageAvailability == true, let cap = credit.overageCapWithPrecision {
             try self.usableCredits(cap, field: "overage cap")
         } else {
             nil
         }
+        // ENABLED without a cap is incomplete, not disabled — keep CLI overage rows visible.
+        let overageEnabled: Bool? = overageAvailability == true && overageCap == nil ? nil : overageAvailability
         guard let resetsAt = self.resetDate(credit.nextDateReset ?? response.nextDateReset) else {
             throw KiroUsageLimitsError.parseError("no plausible reset date reported")
         }
