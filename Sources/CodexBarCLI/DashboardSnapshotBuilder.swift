@@ -292,7 +292,7 @@ enum DashboardSnapshotBuilder {
         return "redacted\(email[at...])"
     }
 
-    /// Redacts every bounded `@` address range, including apostrophes in the local part,
+    /// Redacts every bounded `@` address range, including apostrophes, quoted local parts,
     /// internal domains, and domain literals, so Hide Personal Info cannot leak a second address.
     private static func redactEmailShapedText(_ text: String, mode: DashboardIdentityMode) -> String {
         guard mode == .redacted else { return text }
@@ -317,9 +317,16 @@ enum DashboardSnapshotBuilder {
 
     private static func emailTokenStart(in text: String, before at: String.Index) -> String.Index {
         var idx = at
+        var inQuotedLocalPart = false
         while idx > text.startIndex {
             let previous = text.index(before: idx)
-            if self.isEmailBoundary(text[previous]) { break }
+            let character = text[previous]
+            if character == "\"" {
+                inQuotedLocalPart.toggle()
+                idx = previous
+                continue
+            }
+            if !inQuotedLocalPart, self.isEmailBoundary(character) { break }
             idx = previous
         }
         return idx
