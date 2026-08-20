@@ -46,9 +46,10 @@ public enum ClaudeSwapRetainedUsageStore {
         accounts.compactMap(Record.init(account:)).map(\.account)
     }
 
-    static func fingerprint(email: String, slot: String) -> String {
+    static func fingerprint(email: String, slot: String) -> String? {
         let trimmed = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let material = trimmed.contains("@") ? trimmed : "slot:\(slot)"
+        guard trimmed.contains("@") else { return nil }
+        let material = "\(slot)\u{0}\(trimmed)"
         return SHA256.hash(data: Data(material.utf8)).map { String(format: "%02x", $0) }.joined()
     }
 
@@ -101,9 +102,13 @@ public enum ClaudeSwapRetainedUsageStore {
                   let snapshot = account.snapshot
             else { return nil }
             self.opaqueID = account.id.opaqueID
-            self.accountFingerprint = ClaudeSwapRetainedUsageStore.fingerprint(
+            guard let fingerprint = ClaudeSwapRetainedUsageStore.fingerprint(
                 email: snapshot.identity?.accountEmail ?? account.displayLabel,
                 slot: account.id.opaqueID)
+            else {
+                return nil
+            }
+            self.accountFingerprint = fingerprint
             self.primary = snapshot.primary
             self.secondary = snapshot.secondary
             self.extraRateWindows = snapshot.extraRateWindows

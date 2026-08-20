@@ -93,13 +93,14 @@ public enum ClaudeSwapAccountProjection {
         now: Date) -> UsageSnapshot?
     {
         guard let previous, let snapshot = previous.snapshot else { return nil }
-        guard let previousFingerprint = ClaudeSwapRetainedUsageStore.fingerprint(from: previous) else {
+        guard let previousFingerprint = ClaudeSwapRetainedUsageStore.fingerprint(from: previous),
+              let rowFingerprint = ClaudeSwapRetainedUsageStore.fingerprint(
+                email: row.email,
+                slot: String(row.number)),
+              previousFingerprint == rowFingerprint
+        else {
             return nil
         }
-        let rowFingerprint = ClaudeSwapRetainedUsageStore.fingerprint(
-            email: row.email,
-            slot: String(row.number))
-        guard previousFingerprint == rowFingerprint else { return nil }
         return self.prunedAtLimitSnapshot(snapshot, identity: self.identitySnapshot(for: row), now: now)
     }
 

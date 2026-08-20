@@ -592,6 +592,46 @@ struct ClaudeSwapAccountProjectionTests {
     }
 
     @Test
+    func `unavailable retain ignores cached windows when the slot has no email`() throws {
+        let reset = Date(timeIntervalSince1970: 1_782_259_200)
+        let previous = ClaudeSwapAccountProjection.accountSnapshots(
+            from: ClaudeSwapAccountList(
+                activeAccountNumber: 1,
+                accounts: [
+                    ClaudeSwapAccountRow(
+                        number: 1,
+                        email: "",
+                        isActive: true,
+                        usageStatus: .ok,
+                        fiveHour: ClaudeSwapUsageWindow(usedPercent: 100, resetsAt: reset),
+                        sevenDay: nil),
+                ]),
+            now: self.now)
+        let cached = ClaudeSwapRetainedUsageStore.snapshotsForRetention(previous)
+        #expect(cached.isEmpty)
+        let list = ClaudeSwapAccountList(
+            activeAccountNumber: 1,
+            accounts: [
+                ClaudeSwapAccountRow(
+                    number: 1,
+                    email: "",
+                    isActive: true,
+                    usageStatus: .unavailable,
+                    fiveHour: nil,
+                    sevenDay: nil),
+            ])
+
+        let account = try #require(
+            ClaudeSwapAccountProjection.accountSnapshots(
+                from: list,
+                previousAccounts: previous,
+                now: self.now).first)
+        #expect(account.displayLabel == "Account 1")
+        #expect(account.snapshot == nil)
+        #expect(account.error == "Polling deferred until a limit resets.")
+    }
+
+    @Test
     func `unavailable retain keeps cached windows for the same slot account`() throws {
         let reset = Date(timeIntervalSince1970: 1_782_259_200)
         let previous = ClaudeSwapAccountProjection.accountSnapshots(
