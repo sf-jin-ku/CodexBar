@@ -165,7 +165,7 @@ struct KiroUsageLimitsAPITests {
         #expect(limits.overageCap == nil)
         #expect(snapshot.extraRateWindows == nil)
         #expect(snapshot.providerCost == nil)
-        #expect(rows.contains { $0.label == "Overages" && $0.value.hasPrefix("Enabled") })
+        #expect(rows.contains { $0.label == "Overages" && $0.value == "Disabled" })
         #expect(rows.contains { $0.label == "Overage usage" } == false)
         #expect(rows.contains { $0.label == "Overage credits left" } == false)
     }

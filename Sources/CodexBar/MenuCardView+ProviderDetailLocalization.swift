@@ -56,7 +56,7 @@ extension UsageMenuCardView.Model {
         return L("Resets every 5 hours")
     }
 
-    /// Provider-specific by design: DeepSeek and z.ai detail values carry provider-owned unit phrasing that
+    /// Provider-specific by design: DeepSeek, z.ai, and Kiro detail values carry provider-owned unit phrasing that
     /// localizes at the presentation boundary without touching other providers.
     private static func localizedProviderDetailValue(_ value: String, provider: UsageProvider) -> String {
         switch provider {
@@ -64,9 +64,17 @@ extension UsageMenuCardView.Model {
             self.localizedTokenSuffix(value)
         case .zai:
             self.localizedZaiValue(value)
+        case .kiro:
+            self.localizedKiroCapPhrase(value)
         default:
             value
         }
+    }
+
+    private static func localizedKiroCapPhrase(_ value: String) -> String {
+        let prefix = "of "
+        guard value.hasPrefix(prefix) else { return value }
+        return L("of %@", String(value.dropFirst(prefix.count)))
     }
 
     private static func localizedTokenSuffix(_ value: String) -> String {

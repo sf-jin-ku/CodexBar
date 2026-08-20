@@ -1077,6 +1077,7 @@
 "CodexBar will ask macOS Keychain for your z.ai API token so it can fetch usage. Click OK to continue." = "CodexBar kommer att be macOS Nyckelring om din z.ai-API-token så att användning kan hämtas. Klicka på OK för att fortsätta.";
 "Show usage for organizations you belong to. Personal account is always shown." = "Visa användning för organisationer du tillhör. Personligt konto visas alltid.";
 "%@ of %@ credits left" = "%@ av %@ krediter kvar";
+"of %@" = "av %@";
 "Stored in ~/.codexbar/config.json. You can also provide CODEBUFF_API_KEY or let CodexBar read ~/.config/manicode/credentials.json (created by `codebuff login`)." = "Sparas i ~/.codexbar/config.json. Du kan också ange CODEBUFF_API_KEY eller låta CodexBar läsa ~/.config/manicode/credentials.json (skapas av `codebuff login`).";
 "Automatic imports Windsurf session data from Chromium browser localStorage." = "Importerar Windsurf-sessionsdata från Chromium-webbläsarens localStorage automatiskt.";
 "Full in ~%.0f regens" = "Full om cirka %.0f regenereringar";

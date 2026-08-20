@@ -950,6 +950,7 @@
 "Balance updates in near-real time (up to 5 min lag)" = "تحديثات التوازن في الوقت شبه الحقيقي (حتى تأخير 5 دقائق)";
 "Daily billing data finalizes at 07:00 UTC" = "يتم الانتهاء من بيانات الفوترة اليومية في الساعة 07:00 UTC";
 "%@ of %@ credits left" = "%@ من %@ اعتمادات متبقية";
+"of %@" = "من %@";
 "%@ of %@ bonus credits left" = "%@ من %@ رصيد إضافي متبقي";
 "%@ / %@ (%@ remaining)" = "%@ / %@ (%@ متبقية)";
 "%@/%@ left" = "%@/%@ متبقٍ";

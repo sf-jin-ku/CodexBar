@@ -952,6 +952,7 @@
 "Balance updates in near-real time (up to 5 min lag)" = "Saldo diperbarui hampir real-time (hingga 5 menit keterlambatan)";
 "Daily billing data finalizes at 07:00 UTC" = "Data tagihan harian final pada 07:00 UTC";
 "%@ of %@ credits left" = "%@ dari %@ kredit tersisa";
+"of %@" = "dari %@";
 "%@ of %@ bonus credits left" = "%@ dari %@ kredit bonus tersisa";
 "%@ / %@ (%@ remaining)" = "%@ / %@ (%@ tersisa)";
 "%@/%@ left" = "%@/%@ tersisa";

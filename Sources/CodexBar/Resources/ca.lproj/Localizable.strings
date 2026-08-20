@@ -813,6 +813,7 @@
 "Balance updates in near-real time (up to 5 min lag)" = "El saldo s'actualitza gairebé en temps real (fins a 5 min de retard)";
 "Daily billing data finalizes at 07:00 UTC" = "Les dades diàries de facturació es tanquen a les 07:00 UTC";
 "%@ of %@ credits left" = "Queden %@ de %@ crèdits";
+"of %@" = "de %@";
 "%@ of %@ bonus credits left" = "Queden %@ de %@ crèdits de bonificació";
 "%@ / %@ (%@ remaining)" = "%@ / %@ (%@ restants)";
 "%@/%@ left" = "%@/%@ restant";

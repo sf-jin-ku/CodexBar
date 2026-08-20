@@ -946,6 +946,7 @@
 "Balance updates in near-real time (up to 5 min lag)" = "Bakiye neredeyse gerçek zamanlı güncellenir (en fazla 5 dk gecikme)";
 "Daily billing data finalizes at 07:00 UTC" = "Günlük faturalandırma verisi 07:00 UTC'de kesinleşir";
 "%@ of %@ credits left" = "%@ / %@ kredi kaldı";
+"of %@" = "/ %@";
 "%@ of %@ bonus credits left" = "%@ / %@ bonus kredi kaldı";
 "%@ / %@ (%@ remaining)" = "%@ / %@ (%@ kaldı)";
 "%@/%@ left" = "%@/%@ kaldı";

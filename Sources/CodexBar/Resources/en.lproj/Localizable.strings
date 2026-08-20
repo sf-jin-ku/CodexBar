@@ -930,6 +930,7 @@
 "Balance updates in near-real time (up to 5 min lag)" = "Balance updates in near-real time (up to 5 min lag)";
 "Daily billing data finalizes at 07:00 UTC" = "Daily billing data finalizes at 07:00 UTC";
 "%@ of %@ credits left" = "%@ of %@ credits left";
+"of %@" = "of %@";
 "%@ of %@ bonus credits left" = "%@ of %@ bonus credits left";
 "%@ / %@ (%@ remaining)" = "%@ / %@ (%@ remaining)";
 "%@/%@ left" = "%@/%@ left";

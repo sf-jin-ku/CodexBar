@@ -952,6 +952,7 @@
 "Balance updates in near-real time (up to 5 min lag)" = "Saldo aktualizuje się prawie w czasie rzeczywistym (opóźnienie do 5 min)";
 "Daily billing data finalizes at 07:00 UTC" = "Dzienne dane rozliczeniowe finalizują się o 07:00 UTC";
 "%@ of %@ credits left" = "%@ z %@ kredytów pozostało";
+"of %@" = "z %@";
 "%@ of %@ bonus credits left" = "%@ z %@ bonusowych kredytów pozostało";
 "%@ / %@ (%@ remaining)" = "%@ / %@ (%@ pozostało)";
 "%@/%@ left" = "%@/%@ pozostało";

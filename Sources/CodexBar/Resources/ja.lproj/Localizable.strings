@@ -940,6 +940,7 @@
 "Balance updates in near-real time (up to 5 min lag)" = "残高はほぼリアルタイムで更新されます（最大5分の遅延）";
 "Daily billing data finalizes at 07:00 UTC" = "日次請求データは 07:00 UTC に確定します";
 "%@ of %@ credits left" = "クレジット残り %@ / %@";
+"of %@" = "/ %@";
 "%@ of %@ bonus credits left" = "ボーナスクレジット残り %@ / %@";
 "%@ / %@ (%@ remaining)" = "%@ / %@（残り %@）";
 "%@/%@ left" = "残り %@/%@";

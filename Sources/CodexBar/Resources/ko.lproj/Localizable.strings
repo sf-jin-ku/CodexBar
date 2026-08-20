@@ -912,6 +912,7 @@
 "Balance updates in near-real time (up to 5 min lag)" = "잔액은 거의 실시간으로 업데이트됩니다(최대 5분 지연)";
 "Daily billing data finalizes at 07:00 UTC" = "일간 청구 데이터는 07:00 UTC에 확정됩니다";
 "%@ of %@ credits left" = "크레딧 %2$@개 중 %1$@개 남음";
+"of %@" = "/ %@";
 "%@ of %@ bonus credits left" = "보너스 크레딧 %2$@개 중 %1$@개 남음";
 "%@ / %@ (%@ remaining)" = "%@ / %@ (%@ 남음)";
 "%@/%@ left" = "%@/%@ 남음";
