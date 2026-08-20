@@ -939,6 +939,7 @@
 "Monthly" = "รายเดือน";
 "Sonnet" = "โคลง";
 "Overages" = "ส่วนเกิน";
+"Overage" = "ส่วนเกิน";
 "Activity" = "กิจกรรม";
 "Copied" = "คัดลอกแล้ว";
 "Copy error" = "ข้อผิดพลาดในการคัดลอก";
@@ -960,6 +961,7 @@
 "Full in ~1 regen" = "เต็มที่ ~1 รีเจน";
 "Full in ~%.0f regens" = "เต็มไปด้วยการฟื้นฟู ~%.0f ครั้ง";
 "Overage usage" = "การใช้งานส่วนเกิน";
+"Overage credits left" = "เครดิตส่วนเกินที่เหลือ";
 "Overage cost" = "ค่าใช้จ่ายส่วนเกิน";
 "credits" = "เครดิต";
 "Zen balance" = "ความสมดุลแบบเซน";

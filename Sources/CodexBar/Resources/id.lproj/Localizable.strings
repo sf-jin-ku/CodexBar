@@ -941,6 +941,7 @@
 "Monthly" = "Bulanan";
 "Sonnet" = "Sonnet";
 "Overages" = "Kelebihan";
+"Overage" = "Kelebihan";
 "Activity" = "Aktivitas";
 "Copied" = "Disalin";
 "Copy error" = "Salin error";
@@ -962,6 +963,7 @@
 "Full in ~1 regen" = "Penuh dalam ~1 regenerasi";
 "Full in ~%.0f regens" = "Penuh dalam ~%.0f regenerasi";
 "Overage usage" = "Penggunaan kelebihan";
+"Overage credits left" = "Sisa kredit kelebihan";
 "Overage cost" = "Biaya kelebihan";
 "credits" = "kredit";
 "Zen balance" = "Saldo Zen";

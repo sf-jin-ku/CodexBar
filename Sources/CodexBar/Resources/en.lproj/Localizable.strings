@@ -919,6 +919,7 @@
 "Monthly" = "Monthly";
 "Sonnet" = "Sonnet";
 "Overages" = "Overages";
+"Overage" = "Overage";
 "Activity" = "Activity";
 "Copied" = "Copied";
 "Copy error" = "Copy error";
@@ -940,6 +941,7 @@
 "Full in ~1 regen" = "Full in ~1 regen";
 "Full in ~%.0f regens" = "Full in ~%.0f regens";
 "Overage usage" = "Overage usage";
+"Overage credits left" = "Overage credits left";
 "Overage cost" = "Overage cost";
 "credits" = "credits";
 "Zen balance" = "Zen balance";

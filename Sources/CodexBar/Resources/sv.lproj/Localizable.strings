@@ -1107,6 +1107,7 @@
 "CodexBar could not read the current system account on this Mac." = "CodexBar kunde inte läsa det aktuella systemkontot på den här Mac-datorn.";
 "%@ of %@ bonus credits left" = "%@ av %@ bonuskrediter kvar";
 "Overage usage" = "Överförbrukning";
+"Overage credits left" = "Överförbrukningskrediter kvar";
 "AWS access key ID. Can also be set with AWS_ACCESS_KEY_ID." = "AWS-åtkomstnyckel-ID. Kan även anges med AWS_ACCESS_KEY_ID.";
 "CodexBar could not find saved auth for that account. Re-authenticate it and try again." = "CodexBar kunde inte hitta sparad autentisering för kontot. Autentisera det igen och försök igen.";
 "Capacity End" = "Kapacitetsslut";
@@ -1185,6 +1186,7 @@
 "Stored in ~/.codexbar/config.json. Get your key from Ollama settings." = "Sparas i ~/.codexbar/config.json. Hämta nyckeln från Ollama-inställningarna.";
 "Open Augment (Log Out & Back In)" = "Öppna Augment (logga ut och in igen)";
 "Overages" = "Överförbrukning";
+"Overage" = "Överförbrukning";
 "Open projects" = "Öppna projekt";
 "Reported by OpenAI Admin API organization usage." = "Rapporteras av OpenAI Admin API:s organisationsanvändning.";
 "%@: %@ credits" = "%@: %@ krediter";

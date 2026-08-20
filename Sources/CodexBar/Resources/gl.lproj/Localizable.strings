@@ -791,6 +791,7 @@
 "Sonnet" = "Sonnet";
 "Auth" = "Autenticación";
 "Overages" = "Excesos";
+"Overage" = "Exceso";
 "Activity" = "Actividade";
 "Copied" = "Copiado";
 "Copy error" = "Erro ao copiar";
@@ -812,6 +813,7 @@
 "Full in ~1 regen" = "Cheo en ~1 rexeneración";
 "Full in ~%.0f regens" = "Cheo en ~%.0f rexeneracións";
 "Overage usage" = "Uso excesivo";
+"Overage credits left" = "Créditos de exceso restantes";
 "Overage cost" = "Custo excedente";
 "credits" = "créditos";
 "Zen balance" = "Saldo Zen";

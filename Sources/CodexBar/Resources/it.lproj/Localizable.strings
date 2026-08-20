@@ -941,6 +941,7 @@
 "Monthly" = "Mensile";
 "Sonnet" = "Claude Sonnet";
 "Overages" = "Eccedenze";
+"Overage" = "Eccedenza";
 "Activity" = "Attività";
 "Copied" = "Copiato";
 "Copy error" = "Errore di copia";
@@ -962,6 +963,7 @@
 "Full in ~1 regen" = "Pieno tra ~1 rigenerazione";
 "Full in ~%.0f regens" = "Pieno tra ~%.0f rigenerazioni";
 "Overage usage" = "Utilizzo in eccedenza";
+"Overage credits left" = "Crediti in eccedenza rimanenti";
 "Overage cost" = "Costo eccedenza";
 "credits" = "crediti";
 "Zen balance" = "Saldo Zen";

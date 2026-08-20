@@ -901,6 +901,7 @@
 "Monthly" = "월간";
 "Sonnet" = "Sonnet";
 "Overages" = "초과분";
+"Overage" = "초과분";
 "Activity" = "활동";
 "Copied" = "복사됨";
 "Copy error" = "오류 복사";
@@ -922,6 +923,7 @@
 "Full in ~1 regen" = "약 1회 재생성 후 가득 참";
 "Full in ~%.0f regens" = "약 %.0f회 재생성 후 가득 참";
 "Overage usage" = "초과 사용량";
+"Overage credits left" = "남은 초과 크레딧";
 "Overage cost" = "초과 비용";
 "credits" = "크레딧";
 "Zen balance" = "Zen 잔액";

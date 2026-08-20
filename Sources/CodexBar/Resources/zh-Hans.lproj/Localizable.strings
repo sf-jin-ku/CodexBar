@@ -898,6 +898,7 @@
 "Monthly" = "每月";
 "Sonnet" = "Sonnet";
 "Overages" = "超额";
+"Overage" = "超额";
 "Activity" = "活动";
 "Copied" = "已复制";
 "Copy error" = "复制错误";
@@ -919,6 +920,7 @@
 "Full in ~1 regen" = "约 1 次恢复后全满";
 "Full in ~%.0f regens" = "约 %.0f 次恢复后全满";
 "Overage usage" = "超额用量";
+"Overage credits left" = "剩余超额额度";
 "Overage cost" = "超额费用";
 "credits" = "额度";
 "Zen balance" = "Zen 余额";

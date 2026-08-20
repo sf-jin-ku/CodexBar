@@ -932,6 +932,7 @@
 "Monthly" = "Mensuel";
 "Sonnet" = "Sonnet";
 "Overages" = "Dépassements";
+"Overage" = "Dépassement";
 "Activity" = "Activité";
 "Copied" = "Copié";
 "Copy error" = "Erreur de copie";
@@ -953,6 +954,7 @@
 "Full in ~1 regen" = "Complet en ~1 régénération";
 "Full in ~%.0f regens" = "Plein en ~%.0f régénérations";
 "Overage usage" = "Utilisation excédentaire";
+"Overage credits left" = "Crédits de dépassement restants";
 "Overage cost" = "Coût excédentaire";
 "credits" = "crédits";
 "Zen balance" = "L'équilibre zen";

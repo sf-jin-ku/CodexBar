@@ -939,6 +939,7 @@
 "Monthly" = "ماهانه";
 "Sonnet" = "سونت";
 "Overages" = "اضافه هزینه ها";
+"Overage" = "اضافه هزینه";
 "Activity" = "فعالیت ها";
 "Copied" = "کپی شده";
 "Copy error" = "خطای کپی";
@@ -960,6 +961,7 @@
 "Full in ~1 regen" = "بازیابی کامل ~۱";
 "Full in ~%.0f regens" = "بازسازی های کامل ~%.0f";
 "Overage usage" = "استفاده بیش از حد";
+"Overage credits left" = "اعتبار اضافی باقی‌مانده";
 "Overage cost" = "هزینه اضافی";
 "credits" = "اعتبارات";
 "Zen balance" = "تعادل ذن";

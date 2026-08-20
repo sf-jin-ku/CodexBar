@@ -934,6 +934,7 @@
 "Monthly" = "Ежемесячно";
 "Sonnet" = "Sonnet";
 "Overages" = "Перерасходы";
+"Overage" = "Перерасход";
 "Activity" = "Активность";
 "Copied" = "Скопировано";
 "Copy error" = "Ошибка копирования";
@@ -955,6 +956,7 @@
 "Full in ~1 regen" = "Заполнится примерно за 1 пополнение";
 "Full in ~%.0f regens" = "Заполнится примерно за %.0f пополнений";
 "Overage usage" = "Перерасход";
+"Overage credits left" = "Оставшиеся кредиты перерасхода";
 "Overage cost" = "Стоимость перерасхода";
 "credits" = "кредиты";
 "Zen balance" = "Баланс Zen";
