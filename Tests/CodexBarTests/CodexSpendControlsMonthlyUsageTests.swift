@@ -227,6 +227,7 @@ struct CodexSpendControlsMonthlyUsageTests {
         #expect(enriched.credits?.codexCreditLimit?.limit == 7000)
         #expect(enriched.sourceLabel == original.sourceLabel)
         #expect(enriched.strategyID == original.strategyID)
+        #expect(!enriched.codexMonthlyLimitEnrichmentFailed)
     }
 
     @Test
@@ -276,6 +277,29 @@ struct CodexSpendControlsMonthlyUsageTests {
         #expect(result.strategyID == original.strategyID)
         #expect(result.strategyKind == original.strategyKind)
         #expect(result.diagnostic == original.diagnostic)
+        #expect(!original.codexMonthlyLimitEnrichmentFailed)
+        #expect(result.codexMonthlyLimitEnrichmentFailed)
+    }
+
+    @Test
+    func `O auth helper treats disabled monthly cap as confirmed absence`() async throws {
+        let usageJSON = self.educationUsageJSON()
+        let usage = try self.decodeUsage(usageJSON)
+        let original = try CodexOAuthFetchStrategy._mapResultForTesting(
+            Data(usageJSON.utf8),
+            credentials: self.makeCredentials())
+        let payload = try self.decodeMonthlyUsage(self.monthlyUsageJSON(enforcementMode: "disabled"))
+
+        let result = try await CodexOAuthFetchStrategy._applySpendControlsMonthlyLimitForTesting(
+            original,
+            usage: usage,
+            credentials: self.makeCredentials(accountId: "credential-account"),
+            context: self.makeContext(),
+            fetcher: { _ in payload })
+
+        #expect(result.credits == original.credits)
+        #expect(result.credits?.codexCreditLimit == nil)
+        #expect(!result.codexMonthlyLimitEnrichmentFailed)
     }
 
     @Test

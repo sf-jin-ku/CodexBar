@@ -1,6 +1,9 @@
 # Changelog
 
-- Codex: show Business/Enterprise individual monthly credit used vs cap on stacked multi-account cards instead of "Limits not available" (#3112). Thanks @sf-jin-ku!- Added conditional tokens to the menu bar layout editor: named, reusable if/then/else rules (1–4 AND/OR clauses over Session/Weekly/Scoped/Auto thresholds) that swap or hide tokens based on live usage, downgrade-safe and localized across all 23 catalogs (#3076). Thanks @wdmitchelluk!
+## 0.54.1 — Unreleased
+
+- Codex: show Business/Enterprise individual monthly credit used vs cap on stacked multi-account cards instead of "Limits not available" (#3112). Thanks @sf-jin-ku!
+- Added conditional tokens to the menu bar layout editor: named, reusable if/then/else rules (1–4 AND/OR clauses over Session/Weekly/Scoped/Auto thresholds) that swap or hide tokens based on live usage, downgrade-safe and localized across all 23 catalogs (#3076). Thanks @wdmitchelluk!
 - Fixed inconsistent German localization of "About" ("Um" → "Über") (#3077). Thanks @dwt!
 - Localized provider usage details in Simplified Chinese: DeepSeek detailed usage/balance, z.ai/GLM quota details, token charts, and the 5-hour reset text (#3084). Thanks @haixing23!
 - Localized remaining provider-detail edge cases in Simplified Chinese: DeepSeek zero-balance/unavailable-API text, z.ai one-sided quota values, credit-plan rates, peak/off-peak states, and countdown shapes (#3086). Thanks @haixing23!

@@ -25,6 +25,24 @@ struct CodexAccountUsageSnapshot: Identifiable {
     }
 }
 
+enum CodexMonthlyCreditPreservation {
+    static func merging(
+        incoming: CreditsSnapshot?,
+        prior: CreditsSnapshot?,
+        enrichmentFailed: Bool) -> CreditsSnapshot?
+    {
+        guard enrichmentFailed else { return incoming }
+        guard let priorLimit = prior?.codexCreditLimit else { return incoming }
+        if incoming?.codexCreditLimit != nil { return incoming }
+        guard let incoming else { return prior }
+        return CreditsSnapshot(
+            remaining: incoming.remaining,
+            events: incoming.events,
+            updatedAt: incoming.updatedAt,
+            codexCreditLimit: priorLimit)
+    }
+}
+
 protocol CodexAccountUsageSnapshotStoring: Sendable {
     func load(for accounts: [CodexVisibleAccount]) -> [CodexAccountUsageSnapshot]
     func store(_ snapshots: [CodexAccountUsageSnapshot])

@@ -1364,7 +1364,10 @@ extension UsageStore {
                 snapshot: backfilled,
                 error: nil,
                 sourceLabel: result.sourceLabel,
-                credits: result.credits)
+                credits: CodexMonthlyCreditPreservation.merging(
+                    incoming: result.credits,
+                    prior: priorSnapshot?.credits,
+                    enrichmentFailed: result.codexMonthlyLimitEnrichmentFailed))
             return ResolvedCodexAccountOutcome(
                 snapshot: snapshot,
                 usage: backfilled,
@@ -1430,7 +1433,9 @@ extension UsageStore {
             let publicationGuard = Self.codexScopedRefreshGuard(for: account)
             let codexOwnerKey = Self.codexSessionQuotaOwnerKey(for: publicationGuard)
             self.lastFetchAttempts[.codex] = outcome.attempts
-            if let credits = result.credits {
+            if let credits = self.codexAccountSnapshots.first(where: { $0.id == account.id })?.credits
+                ?? result.credits
+            {
                 self.credits = credits
                 self.lastCreditsError = nil
                 self.lastCreditsSnapshot = credits

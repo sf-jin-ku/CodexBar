@@ -566,6 +566,7 @@ struct CodexOAuthFetchStrategy: ProviderFetchStrategy {
             strategyID: result.strategyID,
             strategyKind: result.strategyKind,
             codexResetCreditsAttempted: true,
+            codexMonthlyLimitEnrichmentFailed: result.codexMonthlyLimitEnrichmentFailed,
             diagnostic: result.diagnostic,
             claudeOAuthKeychainPersistentRefHash: result.claudeOAuthKeychainPersistentRefHash,
             claudeOAuthHistoryOwnerIdentifier: result.claudeOAuthHistoryOwnerIdentifier,
@@ -611,6 +612,7 @@ struct CodexOAuthFetchStrategy: ProviderFetchStrategy {
             strategyID: oauthResult.strategyID,
             strategyKind: oauthResult.strategyKind,
             codexResetCreditsAttempted: oauthResult.codexResetCreditsAttempted,
+            codexMonthlyLimitEnrichmentFailed: oauthResult.codexMonthlyLimitEnrichmentFailed,
             diagnostic: oauthResult.diagnostic)
     }
 
@@ -666,7 +668,7 @@ struct CodexOAuthFetchStrategy: ProviderFetchStrategy {
             if error is CancellationError || Task.isCancelled {
                 throw CancellationError()
             }
-            return result
+            return result.markingMonthlyLimitEnrichmentFailed()
         }
     }
 
@@ -691,6 +693,7 @@ struct CodexOAuthFetchStrategy: ProviderFetchStrategy {
             strategyID: result.strategyID,
             strategyKind: result.strategyKind,
             codexResetCreditsAttempted: result.codexResetCreditsAttempted,
+            codexMonthlyLimitEnrichmentFailed: result.codexMonthlyLimitEnrichmentFailed,
             diagnostic: result.diagnostic,
             claudeOAuthKeychainPersistentRefHash: result.claudeOAuthKeychainPersistentRefHash,
             claudeOAuthHistoryOwnerIdentifier: result.claudeOAuthHistoryOwnerIdentifier,
