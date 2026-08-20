@@ -254,6 +254,33 @@ struct KiroUsageLimitsAPITests {
     }
 
     @Test
+    func `bonus-inclusive usage above the plan limit still enriches overage`() throws {
+        let json = Self.overageInUseResponse
+            .replacingOccurrences(of: "\"bonuses\":[]", with: "\"bonuses\":[{}]")
+            .replacingOccurrences(
+                of: "\"currentUsageWithPrecision\":13603.49",
+                with: "\"currentUsageWithPrecision\":14603.49")
+        let limits = try KiroUsageLimitsAPI.parse(Data(json.utf8))
+        #expect(limits.hasUnseparatedBonus)
+        #expect(limits.planUsed == 11000)
+        #expect(limits.overageUsed == 3603.49)
+        #expect(limits.overageCap == 10000)
+
+        let probe = KiroStatusProbe()
+        let cliReport = try probe.parse(output: """
+        Estimated Usage | resets on 2026-09-01 | KIRO POWER
+        Credits (40.00 of 10000 covered in plan)
+        ████████████████████████████████████████████████████████████████████████████████ 0%
+        Bonus credits: 5.00/10 credits used
+        Overages: Enabled billed at $0.04 per request
+        """)
+        let snapshot = cliReport.withUsageLimits(limits)
+        #expect(snapshot.creditsUsed == 40)
+        #expect(snapshot.creditsTotal == 10000)
+        #expect(snapshot.overageCreditsUsed == 3603.49)
+    }
+
+    @Test
     func `non usd api without charges does not keep the cli usd estimate`() throws {
         let json = Self.overageInUseResponse
             .replacingOccurrences(of: "\"currency\":\"USD\"", with: "\"currency\":\"EUR\"")

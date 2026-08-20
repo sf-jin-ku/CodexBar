@@ -207,8 +207,12 @@ public enum KiroUsageLimitsAPI: Sendable {
             throw KiroUsageLimitsError.parseError("overage exceeds total usage")
         }
         let planUsed = totalUsed - overageUsed
-        guard planUsed <= planLimit else {
-            throw KiroUsageLimitsError.parseError("plan usage exceeds plan limit")
+        let hasUnseparatedBonus = !(credit.bonuses ?? []).isEmpty
+        // Bonus spend is folded into currentUsage, so planUsed can exceed the plan ceiling.
+        if !hasUnseparatedBonus {
+            guard planUsed <= planLimit else {
+                throw KiroUsageLimitsError.parseError("plan usage exceeds plan limit")
+            }
         }
 
         let overageAvailability = self.overageAvailability(response.overageConfiguration?.overageStatus)
@@ -233,7 +237,7 @@ public enum KiroUsageLimitsAPI: Sendable {
             overageRate: credit.overageRate.flatMap { $0.isFinite && $0 > 0 ? $0 : nil },
             currencyCode: credit.currency ?? "USD",
             resetsAt: resetsAt,
-            hasUnseparatedBonus: !(credit.bonuses ?? []).isEmpty)
+            hasUnseparatedBonus: hasUnseparatedBonus)
     }
 
     private static func overageAvailability(_ status: String?) -> Bool? {
