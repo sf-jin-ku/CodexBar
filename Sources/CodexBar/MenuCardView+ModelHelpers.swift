@@ -738,9 +738,13 @@ extension UsageMenuCardView.Model {
     }
 
     private static func hasCodexCreditOrRateMeters(_ input: Input) -> Bool {
-        if let lanes = input.codexProjection?.visibleRateLanes, !lanes.isEmpty {
+        if let lanes = input.codexProjection?.displayedRateLanes(
+            showOptionalCreditsAndExtraUsage: input.showOptionalCreditsAndExtraUsage),
+            !lanes.isEmpty
+        {
             return true
         }
+        guard input.showOptionalCreditsAndExtraUsage else { return false }
         return input.credits?.codexCreditLimit != nil
     }
 

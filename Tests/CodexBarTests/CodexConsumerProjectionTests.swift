@@ -196,6 +196,8 @@ struct CodexConsumerProjectionTests {
         #expect(projection.visibleRateLanes == [.monthly])
         #expect(projection.rateWindow(for: .monthly)?.usedPercent == 27)
         #expect(projection.rateWindow(for: .monthly)?.remainingPercent == 73)
+        #expect(projection.displayedRateLanes(showOptionalCreditsAndExtraUsage: true) == [.monthly])
+        #expect(projection.displayedRateLanes(showOptionalCreditsAndExtraUsage: false).isEmpty)
         #expect(projection.credits == nil)
         #expect(projection.dashboardVisibility == .hidden)
     }

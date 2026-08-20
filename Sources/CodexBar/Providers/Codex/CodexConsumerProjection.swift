@@ -311,6 +311,13 @@ struct CodexConsumerProjection {
             evaluationTime: context.now)
     }
 
+    func displayedRateLanes(showOptionalCreditsAndExtraUsage: Bool) -> [RateLane] {
+        self.visibleRateLanes.filter { lane in
+            guard lane == .monthly, !showOptionalCreditsAndExtraUsage else { return true }
+            return self.rateWindow(for: lane)?.windowMinutes != nil
+        }
+    }
+
     func rateWindow(for lane: RateLane) -> RateWindow? {
         guard let window = self.rateWindowsByLane[lane] else { return nil }
         switch lane {
