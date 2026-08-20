@@ -306,6 +306,36 @@ struct DashboardClaudeSwapSnapshotTests {
     }
 
     @Test
+    func `redacted dashboard mode rewrites quoted local parts`() throws {
+        let accounts = ClaudeSwapAccountProjection.accountSnapshots(
+            from: ClaudeSwapAccountList(
+                activeAccountNumber: 1,
+                accounts: [
+                    self.accountRow(
+                        number: 1,
+                        email: "shared@example.com",
+                        organizationName: "Sendbird",
+                        alias: "Contact \"owner\"@example.com",
+                        active: true),
+                    self.accountRow(
+                        number: 2,
+                        email: "shared@example.com",
+                        organizationName: "Acme",
+                        active: false),
+                ]),
+            now: self.generatedAt)
+        let providers = try self.providers(
+            identityMode: .redacted,
+            claudeSwap: DashboardClaudeSwapInput(accounts: accounts, adapterError: nil, weeklyWorkDays: nil))
+        let claude = try #require(providers.first { $0["id"] as? String == "claude" })
+        let rows = try #require(claude["accounts"] as? [[String: Any]])
+        #expect(rows.compactMap { $0["label"] as? String } == [
+            "Contact redacted@example.com",
+            "redacted@example.com · Acme",
+        ])
+    }
+
+    @Test
     func `dashboard identity flag decodes redacted full and rejects others`() {
         #expect(CodexBarCLI.decodeDashboardIdentityMode(from: self.parsedValues(identity: nil)) == .full)
         #expect(CodexBarCLI.decodeDashboardIdentityMode(from: self.parsedValues(identity: "redacted")) == .redacted)

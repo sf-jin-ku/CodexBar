@@ -343,7 +343,7 @@ enum DashboardSnapshotBuilder {
     }
 
     private static func isEmailBoundary(_ character: Character) -> Bool {
-        character.isWhitespace || "()<>:,;·\"".contains(character)
+        character.isWhitespace || "()<>:,;·".contains(character)
     }
 
     private static func dashboardPlan(_ raw: String?, provider: UsageProvider) -> String? {
