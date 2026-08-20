@@ -1938,7 +1938,15 @@ struct ProviderArchitectureGatekeeperTests {
             reason: "This exact shared renderer maps provider-owned presentation data into the generic UI model."),
         AllowedProviderConstruct(
             path: "Sources/CodexBar/MenuCardView+ProviderDetailLocalization.swift",
-            line: 78,
+            line: 11,
+            anchor: "guard provider == .deepseek || provider == .zai || provider == .kiro else {",
+            expectedProviderIDs: ["deepseek", "kiro", "zai"],
+            expectedReferenceCount: 3,
+            expectedReferenceFingerprint: ["deepseek@0", "kiro@0", "zai@0"],
+            reason: "This exact shared renderer maps provider-owned presentation data into the generic UI model."),
+        AllowedProviderConstruct(
+            path: "Sources/CodexBar/MenuCardView+ProviderDetailLocalization.swift",
+            line: 92,
             anchor: "case .deepseek:",
             expectedProviderIDs: ["deepseek", "kiro", "zai"],
             expectedReferenceCount: 3,

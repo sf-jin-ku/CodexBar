@@ -6,8 +6,22 @@ extension UsageMenuCardView.Model {
         _ details: [ProviderDetailSection],
         provider: UsageProvider) -> [ProviderDetailSection]
     {
-        // Provider-specific by design: DeepSeek, z.ai, and Kiro detail values carry provider-owned unit phrasing.
-        guard provider == .deepseek || provider == .zai || provider == .kiro else { return details }
+        // Provider-specific by design: DeepSeek, z.ai, and Kiro rewrite unit phrasing.
+        // Other providers localize section titles and row labels through the shared catalog; values stay canonical.
+        guard provider == .deepseek || provider == .zai || provider == .kiro else {
+            return details.compactMap { section in
+                let rows = section.rows.compactMap { row in
+                    try? ProviderDetailSection.Row(
+                        label: L(row.label),
+                        value: row.value,
+                        secondaryValue: row.secondaryValue)
+                }
+                return try? ProviderDetailSection(
+                    title: section.title.map(L),
+                    rows: rows,
+                    chart: section.chart)
+            }
+        }
         return details.compactMap { section in
             let rows = section.rows.compactMap { row in
                 try? ProviderDetailSection.Row(
