@@ -52,13 +52,13 @@ struct CodexSpendControlsMonthlyUsageTests {
         """
     }
 
-    private func malformedNestedLimitJSON() -> String {
+    private func malformedNestedLimitJSON(enforcementMode: String = "HARD_CAP") -> String {
         """
         {
           "current_month_usage": 12,
           "effective_monthly_limit": {
             "limit": {"amount": 7000},
-            "enforcement_mode": "HARD_CAP"
+            "enforcement_mode": "\(enforcementMode)"
           }
         }
         """
@@ -170,6 +170,24 @@ struct CodexSpendControlsMonthlyUsageTests {
         let malformed = try self.decodeMonthlyUsage(self.malformedNestedLimitJSON())
 
         #expect(malformed.codexCreditLimitSnapshot(updatedAt: Date()) == nil)
+        #expect(malformed.monthlyLimitMappingFailed)
+    }
+
+    @Test
+    func `disabled enforcement wins over an unmappable nested limit`() throws {
+        let disabled = try self.decodeMonthlyUsage(
+            self.malformedNestedLimitJSON(enforcementMode: "disabled"))
+
+        #expect(disabled.codexCreditLimitSnapshot(updatedAt: Date()) == nil)
+        #expect(!disabled.monthlyLimitMappingFailed)
+    }
+
+    @Test
+    func `unmappable current month usage is an enrichment failure`() throws {
+        let malformed = try self.decodeMonthlyUsage(
+            self.monthlyUsageJSON(usage: #"{"amount":12}"#))
+
+        #expect(malformed.codexCreditLimitSnapshot(updatedAt: Date())?.limit == 7000)
         #expect(malformed.monthlyLimitMappingFailed)
     }
 
@@ -321,6 +339,47 @@ struct CodexSpendControlsMonthlyUsageTests {
 
         #expect(result.credits == original.credits)
         #expect(result.credits?.codexCreditLimit == nil)
+        #expect(result.codexMonthlyLimitEnrichmentFailed)
+    }
+
+    @Test
+    func `O auth helper treats disabled unmappable limit as confirmed absence`() async throws {
+        let usageJSON = self.educationUsageJSON()
+        let usage = try self.decodeUsage(usageJSON)
+        let original = try CodexOAuthFetchStrategy._mapResultForTesting(
+            Data(usageJSON.utf8),
+            credentials: self.makeCredentials())
+        let payload = try self.decodeMonthlyUsage(self.malformedNestedLimitJSON(enforcementMode: "disabled"))
+
+        let result = try await CodexOAuthFetchStrategy._applySpendControlsMonthlyLimitForTesting(
+            original,
+            usage: usage,
+            credentials: self.makeCredentials(accountId: "credential-account"),
+            context: self.makeContext(),
+            fetcher: { _ in payload })
+
+        #expect(result.credits == original.credits)
+        #expect(result.credits?.codexCreditLimit == nil)
+        #expect(!result.codexMonthlyLimitEnrichmentFailed)
+    }
+
+    @Test
+    func `O auth helper treats unmappable current month usage as enrichment failure`() async throws {
+        let usageJSON = self.educationUsageJSON()
+        let usage = try self.decodeUsage(usageJSON)
+        let original = try CodexOAuthFetchStrategy._mapResultForTesting(
+            Data(usageJSON.utf8),
+            credentials: self.makeCredentials())
+        let payload = try self.decodeMonthlyUsage(self.monthlyUsageJSON(usage: #"{"amount":12}"#))
+
+        let result = try await CodexOAuthFetchStrategy._applySpendControlsMonthlyLimitForTesting(
+            original,
+            usage: usage,
+            credentials: self.makeCredentials(accountId: "credential-account"),
+            context: self.makeContext(),
+            fetcher: { _ in payload })
+
+        #expect(result.credits == original.credits)
         #expect(result.codexMonthlyLimitEnrichmentFailed)
     }
 

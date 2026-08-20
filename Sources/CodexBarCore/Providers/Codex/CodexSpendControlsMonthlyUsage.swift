@@ -1,8 +1,11 @@
 import Foundation
 
 public struct CodexSpendControlsMonthlyUsageResponse: Decodable, Sendable {
+    private static let inactiveEnforcementModes: Set<String> = ["none", "off", "disabled", "no_limit"]
+
     public let currentMonthUsage: Double?
     public let effectiveMonthlyLimit: EffectiveMonthlyLimit?
+    private let currentMonthUsageWasUnmappable: Bool
 
     enum CodingKeys: String, CodingKey {
         case currentMonthUsage = "current_month_usage"
@@ -11,21 +14,28 @@ public struct CodexSpendControlsMonthlyUsageResponse: Decodable, Sendable {
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        self.currentMonthUsage = Self.decodeFlexibleDouble(container, forKey: .currentMonthUsage)
+        let decodedUsage = Self.decodeFlexibleDoubleResult(container, forKey: .currentMonthUsage)
+        self.currentMonthUsage = decodedUsage.value
+        self.currentMonthUsageWasUnmappable = decodedUsage.unmappable
         self.effectiveMonthlyLimit = try container.decodeIfPresent(
             EffectiveMonthlyLimit.self,
             forKey: .effectiveMonthlyLimit)
     }
 
     public var monthlyLimitMappingFailed: Bool {
-        self.effectiveMonthlyLimit?.limitWasUnmappable == true
+        if self.hasInactiveEnforcement { return false }
+        return self.currentMonthUsageWasUnmappable
+            || self.effectiveMonthlyLimit?.limitWasUnmappable == true
+    }
+
+    private var hasInactiveEnforcement: Bool {
+        guard let mode = self.effectiveMonthlyLimit?.enforcementMode?.lowercased() else { return false }
+        return Self.inactiveEnforcementModes.contains(mode)
     }
 
     public func codexCreditLimitSnapshot(updatedAt: Date) -> CodexCreditLimitSnapshot? {
         guard let limit = self.effectiveMonthlyLimit?.limit, limit > 0 else { return nil }
-        if let enforcementMode = self.effectiveMonthlyLimit?.enforcementMode?.lowercased(),
-           ["none", "off", "disabled", "no_limit"].contains(enforcementMode)
-        {
+        if self.hasInactiveEnforcement {
             return nil
         }
 
