@@ -146,6 +146,61 @@ struct CodexConsumerProjectionTests {
     }
 
     @Test
+    func `override card projects that account's monthly credit limit`() {
+        let store = self.makeStore(suite: "CodexConsumerProjectionTests-override-monthly")
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let otherAccountCredits = CreditsSnapshot(
+            remaining: 80,
+            events: [],
+            updatedAt: now,
+            codexCreditLimit: CodexCreditLimitSnapshot(
+                used: 90,
+                limit: 100,
+                remainingPercent: 10,
+                resetsAt: nil,
+                updatedAt: now))
+        let accountCredits = CreditsSnapshot(
+            remaining: 0,
+            events: [],
+            updatedAt: now,
+            codexCreditLimit: CodexCreditLimitSnapshot(
+                used: 27,
+                limit: 1000,
+                remainingPercent: 73,
+                resetsAt: nil,
+                updatedAt: now))
+        store.credits = otherAccountCredits
+        let snapshot = UsageSnapshot(
+            primary: nil,
+            secondary: nil,
+            updatedAt: now,
+            identity: ProviderIdentitySnapshot(
+                providerID: .codex,
+                accountEmail: "team@example.com",
+                accountOrganization: "Sendbird",
+                loginMethod: "business"))
+
+        let leaked = store.codexConsumerProjection(
+            surface: .overrideCard,
+            snapshotOverride: snapshot,
+            now: now)
+        #expect(leaked.visibleRateLanes.isEmpty)
+        #expect(leaked.rateWindow(for: .monthly) == nil)
+        #expect(leaked.credits == nil)
+
+        let projection = store.codexConsumerProjection(
+            surface: .overrideCard,
+            snapshotOverride: snapshot,
+            creditsOverride: accountCredits,
+            now: now)
+        #expect(projection.visibleRateLanes == [.monthly])
+        #expect(projection.rateWindow(for: .monthly)?.usedPercent == 27)
+        #expect(projection.rateWindow(for: .monthly)?.remainingPercent == 73)
+        #expect(projection.credits == nil)
+        #expect(projection.dashboardVisibility == .hidden)
+    }
+
+    @Test
     func `menu bar projection flags credits fallback on exhaustion`() {
         let store = self.makeStore(suite: "CodexConsumerProjectionTests-menu-bar")
         let now = Date(timeIntervalSince1970: 1_700_000_000)

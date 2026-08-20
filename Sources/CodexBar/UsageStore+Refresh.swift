@@ -947,7 +947,8 @@ extension UsageStore {
             account: account,
             snapshot: relabeled,
             error: nil,
-            sourceLabel: sourceLabel)]
+            sourceLabel: sourceLabel,
+            credits: self.credits)]
         self.codexAccountSnapshots = currentSnapshots
         self.codexAccountUsageSnapshotStore?.store(currentSnapshots)
     }

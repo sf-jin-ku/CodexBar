@@ -25,22 +25,6 @@ struct TokenAccountUsageSnapshot: Identifiable {
     }
 }
 
-struct CodexAccountUsageSnapshot: Identifiable {
-    let id: String
-    let account: CodexVisibleAccount
-    let snapshot: UsageSnapshot?
-    let error: String?
-    let sourceLabel: String?
-
-    init(account: CodexVisibleAccount, snapshot: UsageSnapshot?, error: String?, sourceLabel: String?) {
-        self.id = account.id
-        self.account = account
-        self.snapshot = snapshot
-        self.error = error
-        self.sourceLabel = sourceLabel
-    }
-}
-
 extension UsageStore {
     func activateCachedTokenAccountSnapshot(provider: UsageProvider, accountID: UUID) {
         guard self.settings.effectiveSelectedTokenAccount(for: provider)?.id == accountID else { return }
@@ -328,7 +312,8 @@ extension UsageStore {
                     snapshot.snapshot,
                     account: currentAccount),
                 error: snapshot.error,
-                sourceLabel: snapshot.sourceLabel)
+                sourceLabel: snapshot.sourceLabel,
+                credits: snapshot.credits)
         }
         self.codexAccountSnapshots = currentSnapshots
         self.codexAccountUsageSnapshotStore?.store(currentSnapshots)
@@ -873,10 +858,12 @@ extension UsageStore {
                 self.providerSpecs[.codex]?.descriptor
                     ?? ProviderDescriptorRegistry
                     .descriptor(for: .codex)
+            // Spend-controls monthly credit (Business/Enterprise individual cap) is gated on this flag.
             let context = self.makeFetchContext(
                 provider: .codex,
                 override: nil,
-                codexActiveSourceOverride: account.selectionSource)
+                codexActiveSourceOverride: account.selectionSource,
+                includeCredits: true)
             let limitResetOwnerKey = self.codexLimitResetOwnerKey(
                 forVisibleAccount: account,
                 visibleAccounts: allVisibleAccounts)
@@ -1376,7 +1363,8 @@ extension UsageStore {
                 account: account,
                 snapshot: backfilled,
                 error: nil,
-                sourceLabel: result.sourceLabel)
+                sourceLabel: result.sourceLabel,
+                credits: result.credits)
             return ResolvedCodexAccountOutcome(
                 snapshot: snapshot,
                 usage: backfilled,
@@ -1400,7 +1388,8 @@ extension UsageStore {
                     account: account,
                     snapshot: priorUsage,
                     error: errorMessage,
-                    sourceLabel: priorSnapshot.sourceLabel)
+                    sourceLabel: priorSnapshot.sourceLabel,
+                    credits: priorSnapshot.credits)
                 return ResolvedCodexAccountOutcome(
                     snapshot: snapshot,
                     usage: priorUsage,
@@ -1436,11 +1425,18 @@ extension UsageStore {
     {
         guard self.isCurrentProviderRefreshGeneration(.codex, generation: generation) else { return }
         switch outcome.result {
-        case .success:
+        case let .success(result):
             guard let snapshot else { return }
             let publicationGuard = Self.codexScopedRefreshGuard(for: account)
             let codexOwnerKey = Self.codexSessionQuotaOwnerKey(for: publicationGuard)
             self.lastFetchAttempts[.codex] = outcome.attempts
+            if let credits = result.credits {
+                self.credits = credits
+                self.lastCreditsError = nil
+                self.lastCreditsSnapshot = credits
+                self.lastCreditsSnapshotAccountKey = publicationGuard.accountKey
+                self.lastCreditsSource = .api
+            }
             self.handleCodexResetCreditNotifications(snapshot: snapshot)
             self.handleQuotaWarningTransitions(
                 provider: .codex,

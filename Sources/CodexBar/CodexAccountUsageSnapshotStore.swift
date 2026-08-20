@@ -1,6 +1,30 @@
 import CodexBarCore
 import Foundation
 
+struct CodexAccountUsageSnapshot: Identifiable {
+    let id: String
+    let account: CodexVisibleAccount
+    let snapshot: UsageSnapshot?
+    let error: String?
+    let sourceLabel: String?
+    let credits: CreditsSnapshot?
+
+    init(
+        account: CodexVisibleAccount,
+        snapshot: UsageSnapshot?,
+        error: String?,
+        sourceLabel: String?,
+        credits: CreditsSnapshot? = nil)
+    {
+        self.id = account.id
+        self.account = account
+        self.snapshot = snapshot
+        self.error = error
+        self.sourceLabel = sourceLabel
+        self.credits = credits
+    }
+}
+
 protocol CodexAccountUsageSnapshotStoring: Sendable {
     func load(for accounts: [CodexVisibleAccount]) -> [CodexAccountUsageSnapshot]
     func store(_ snapshots: [CodexAccountUsageSnapshot])
@@ -18,6 +42,7 @@ struct FileCodexAccountUsageSnapshotStore: CodexAccountUsageSnapshotStoring, @un
         let snapshot: UsageSnapshot?
         let error: String?
         let sourceLabel: String?
+        let credits: CreditsSnapshot?
     }
 
     private struct AccountIdentity: Codable, Equatable {
@@ -76,7 +101,8 @@ struct FileCodexAccountUsageSnapshotStore: CodexAccountUsageSnapshotStoring, @un
                 account: account,
                 snapshot: Self.relabelSnapshot(record.snapshot, for: account),
                 error: record.error,
-                sourceLabel: record.sourceLabel)
+                sourceLabel: record.sourceLabel,
+                credits: record.credits)
         }
     }
 
@@ -91,7 +117,8 @@ struct FileCodexAccountUsageSnapshotStore: CodexAccountUsageSnapshotStoring, @un
                     accountIdentity: identity,
                     snapshot: snapshot.snapshot,
                     error: snapshot.error,
-                    sourceLabel: snapshot.sourceLabel)
+                    sourceLabel: snapshot.sourceLabel,
+                    credits: snapshot.credits)
             })
         let directory = self.fileURL.deletingLastPathComponent()
         do {

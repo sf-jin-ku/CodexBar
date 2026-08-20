@@ -253,7 +253,7 @@ struct CodexConsumerProjection {
 
         let rateWindowsByLane = self.rateWindowsByLane(
             snapshot: context.snapshot,
-            monthlyCreditLimit: surface == .menuBar ? context.liveCredits?.codexCreditLimit : nil)
+            monthlyCreditLimit: self.monthlyCreditLimit(surface: surface, context: context))
         let visibleRateLanes = self.visibleRateLanes(from: rateWindowsByLane, snapshot: context.snapshot)
         let planUtilizationLanes = self.planUtilizationLanes(from: rateWindowsByLane)
 
@@ -420,6 +420,18 @@ struct CodexConsumerProjection {
         guard surface != .overrideCard else { return .hidden }
         guard context.dashboardRequiresLogin == false, context.liveDashboard != nil else { return .hidden }
         return context.dashboardAttachmentAuthorized ? .attached : .displayOnly
+    }
+
+    private static func monthlyCreditLimit(
+        surface: Surface,
+        context: Context) -> CodexCreditLimitSnapshot?
+    {
+        switch surface {
+        case .menuBar, .overrideCard:
+            context.liveCredits?.codexCreditLimit
+        case .liveCard, .widget:
+            nil
+        }
     }
 
     private static func rateWindowsByLane(
@@ -597,6 +609,7 @@ extension UsageStore {
         surface: CodexConsumerProjection.Surface,
         snapshotOverride: UsageSnapshot? = nil,
         errorOverride: String? = nil,
+        creditsOverride: CreditsSnapshot? = nil,
         now: Date = Date()) -> CodexConsumerProjection?
     {
         guard provider == .codex else { return nil }
@@ -604,6 +617,7 @@ extension UsageStore {
             surface: surface,
             snapshotOverride: snapshotOverride,
             errorOverride: errorOverride,
+            creditsOverride: creditsOverride,
             now: now)
     }
 
@@ -611,15 +625,18 @@ extension UsageStore {
         surface: CodexConsumerProjection.Surface,
         snapshotOverride: UsageSnapshot? = nil,
         errorOverride: String? = nil,
+        creditsOverride: CreditsSnapshot? = nil,
         now: Date = Date()) -> CodexConsumerProjection
     {
         let snapshot = surface == .overrideCard ? snapshotOverride : snapshotOverride ?? self.snapshots[.codex]
         let rawUsageError = surface == .overrideCard ? errorOverride : errorOverride ?? self.errors[.codex]
+        let liveCredits = surface == .overrideCard ? creditsOverride : self.credits
+        let rawCreditsError = surface == .overrideCard ? nil : self.lastCreditsError
         let context = CodexConsumerProjection.Context(
             snapshot: snapshot,
             rawUsageError: rawUsageError,
-            liveCredits: self.credits,
-            rawCreditsError: self.lastCreditsError,
+            liveCredits: liveCredits,
+            rawCreditsError: rawCreditsError,
             liveDashboard: self.openAIDashboard,
             rawDashboardError: self.lastOpenAIDashboardError,
             dashboardAttachmentAuthorized: self.openAIDashboardAttachmentAuthorized,

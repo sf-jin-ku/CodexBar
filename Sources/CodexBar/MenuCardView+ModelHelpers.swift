@@ -650,6 +650,13 @@ extension UsageMenuCardView.Model {
         if self.shouldShowRateLimitsUnavailablePlaceholder(input: input, lastError: lastError) {
             return nil
         }
+        if self.hasCodexCreditOrRateMeters(input) {
+            if UsageError.isNoRateLimitsFoundDescription(lastError)
+                || ClaudeStatusProbe.isSubscriptionQuotaUnavailableDescription(lastError)
+            {
+                return nil
+            }
+        }
         return lastError
     }
 
@@ -721,10 +728,20 @@ extension UsageMenuCardView.Model {
         {
             return false
         }
+        if self.hasCodexCreditOrRateMeters(input) {
+            return false
+        }
         if input.limitsAvailability?.isUnavailable == true {
             return true
         }
         return self.rateLimitsUnavailable(input: input, lastError: currentError)
+    }
+
+    private static func hasCodexCreditOrRateMeters(_ input: Input) -> Bool {
+        if let lanes = input.codexProjection?.visibleRateLanes, !lanes.isEmpty {
+            return true
+        }
+        return input.credits?.codexCreditLimit != nil
     }
 
     private static func rateLimitsUnavailable(input: Input, lastError: String? = nil) -> Bool {

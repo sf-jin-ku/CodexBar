@@ -92,7 +92,8 @@ extension StatusItemController {
                         forceOverrideCard: accountSnapshot == nil,
                         accountOverride: self.accountInfo(for: account),
                         historySelectionOverride: self.store.codexPlanUtilizationHistorySelection(
-                            forVisibleAccount: account))
+                            forVisibleAccount: account),
+                        creditsOverride: accountSnapshot?.credits)
                 },
                 planAction: nil),
             to: menu,
