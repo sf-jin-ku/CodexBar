@@ -55,8 +55,9 @@ Kiro uses the AWS `kiro-cli` tool to fetch usage data. No browser cookies or OAu
   - `usedPercent`: extracted from `███...█ X%` pattern, or `planUsed / planLimit` when the API answered.
   - `resetsAt`: parsed from `resets on MM/DD` (assumes current or next year), or `nextDateReset` from the API.
 - **Secondary window**: Bonus credits (when present).
-  - Parsed from `Bonus credits: X.XX/Y credits used`. Always CLI-sourced: `GetUsageLimits` reports bonuses in a
-    separate `bonuses[]` array that CodexBar does not read, so bonus display is unaffected by the API.
+  - Parsed from `Bonus credits: X.XX/Y credits used`. Always CLI-sourced. When `GetUsageLimits` includes a
+    non-empty `bonuses[]` array, CodexBar keeps the CLI plan gauge instead of treating bonus spend as plan
+    usage; overage enrichment still applies.
   - Expiry from `expires in N days`.
 - **Extra window** `kiro-overage`: overage credits spent against `overageCapWithPrecision` (API only). This
   is a second credit ceiling, not optional extra usage — the plan gauge stays plan-only so a spent plan

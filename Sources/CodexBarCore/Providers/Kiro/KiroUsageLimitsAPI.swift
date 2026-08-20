@@ -32,6 +32,8 @@ public struct KiroUsageLimits: Equatable, Sendable {
     public let overageRate: Double?
     public let currencyCode: String
     public let resetsAt: Date
+    /// True when `bonuses[]` was non-empty, so plan usage cannot be split from bonus spend.
+    public let hasUnseparatedBonus: Bool
 
     public init(
         planLimit: Double,
@@ -42,7 +44,8 @@ public struct KiroUsageLimits: Equatable, Sendable {
         overageCharges: Double?,
         overageRate: Double?,
         currencyCode: String,
-        resetsAt: Date)
+        resetsAt: Date,
+        hasUnseparatedBonus: Bool = false)
     {
         self.planLimit = planLimit
         self.planUsed = planUsed
@@ -53,6 +56,7 @@ public struct KiroUsageLimits: Equatable, Sendable {
         self.overageRate = overageRate
         self.currencyCode = currencyCode
         self.resetsAt = resetsAt
+        self.hasUnseparatedBonus = hasUnseparatedBonus
     }
 
     /// The overage budget in currency terms, used as the denominator for accrued charges.
@@ -228,7 +232,8 @@ public enum KiroUsageLimitsAPI: Sendable {
             overageCharges: credit.overageCharges.flatMap { $0.isFinite && $0 >= 0 ? $0 : nil },
             overageRate: credit.overageRate.flatMap { $0.isFinite && $0 > 0 ? $0 : nil },
             currencyCode: credit.currency ?? "USD",
-            resetsAt: resetsAt)
+            resetsAt: resetsAt,
+            hasUnseparatedBonus: !(credit.bonuses ?? []).isEmpty)
     }
 
     private static func overageAvailability(_ status: String?) -> Bool? {
@@ -282,6 +287,9 @@ public enum KiroUsageLimitsAPI: Sendable {
         let overageRate: Double?
         let currency: String?
         let nextDateReset: Double?
+        let bonuses: [BonusEntry]?
+
+        struct BonusEntry: Decodable {}
     }
 
     private struct OverageConfiguration: Decodable {

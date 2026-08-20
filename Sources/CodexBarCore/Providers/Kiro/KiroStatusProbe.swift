@@ -79,11 +79,11 @@ public struct KiroUsageSnapshot: Sendable {
             displayPlanName: self.displayPlanName,
             accountEmail: self.accountEmail,
             authMethod: self.authMethod,
-            creditsUsed: usageLimits.planUsed,
-            creditsTotal: usageLimits.planLimit,
-            creditsPercent: usageLimits.planLimit > 0
-                ? (usageLimits.planUsed / usageLimits.planLimit) * 100.0
-                : self.creditsPercent,
+            creditsUsed: usageLimits.hasUnseparatedBonus ? self.creditsUsed : usageLimits.planUsed,
+            creditsTotal: usageLimits.hasUnseparatedBonus ? self.creditsTotal : usageLimits.planLimit,
+            creditsPercent: usageLimits.hasUnseparatedBonus || usageLimits.planLimit <= 0
+                ? self.creditsPercent
+                : (usageLimits.planUsed / usageLimits.planLimit) * 100.0,
             bonusCreditsUsed: self.bonusCreditsUsed,
             bonusCreditsTotal: self.bonusCreditsTotal,
             bonusExpiryDays: self.bonusExpiryDays,
