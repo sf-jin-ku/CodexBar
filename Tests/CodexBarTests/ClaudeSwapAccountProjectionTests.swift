@@ -143,7 +143,7 @@ struct ClaudeSwapAccountProjectionTests {
         let account = try #require(ClaudeSwapAccountProjection.accountSnapshots(from: list, now: self.now).first)
         let snapshot = try #require(account.snapshot)
         #expect(snapshot.primary?.usedPercent == 100)
-        #expect(snapshot.secondary?.usedPercent == 42)
+        #expect(snapshot.secondary == nil)
         #expect(account.error == "Session limit reached. Resets in 1h.")
         #expect(account.error?.contains("Usage fetch failed") != true)
     }
@@ -344,6 +344,47 @@ struct ClaudeSwapAccountProjectionTests {
                         isActive: true,
                         usageStatus: .ok,
                         fiveHour: ClaudeSwapUsageWindow(usedPercent: 100, resetsAt: nil),
+                        sevenDay: ClaudeSwapUsageWindow(
+                            usedPercent: 100,
+                            resetsAt: self.now.addingTimeInterval(86400))),
+                ]),
+            now: self.now)
+        let list = ClaudeSwapAccountList(
+            activeAccountNumber: 1,
+            accounts: [
+                ClaudeSwapAccountRow(
+                    number: 1,
+                    email: "a@b.c",
+                    isActive: true,
+                    usageStatus: .unavailable,
+                    fiveHour: nil,
+                    sevenDay: nil),
+            ])
+
+        let account = try #require(
+            ClaudeSwapAccountProjection.accountSnapshots(
+                from: list,
+                previousAccounts: previous,
+                now: self.now).first)
+        #expect(account.snapshot?.primary == nil)
+        #expect(account.snapshot?.secondary?.usedPercent == 100)
+        let error = try #require(account.error)
+        #expect(error.contains("Weekly limit reached"))
+        #expect(!error.contains("Session limit reached"))
+    }
+
+    @Test
+    func `unavailable retain drops unknown reset lanes that are not exhausted`() throws {
+        let previous = ClaudeSwapAccountProjection.accountSnapshots(
+            from: ClaudeSwapAccountList(
+                activeAccountNumber: 1,
+                accounts: [
+                    ClaudeSwapAccountRow(
+                        number: 1,
+                        email: "a@b.c",
+                        isActive: true,
+                        usageStatus: .ok,
+                        fiveHour: ClaudeSwapUsageWindow(usedPercent: 40, resetsAt: nil),
                         sevenDay: ClaudeSwapUsageWindow(
                             usedPercent: 100,
                             resetsAt: self.now.addingTimeInterval(86400))),
