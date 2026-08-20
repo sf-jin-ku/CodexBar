@@ -145,6 +145,19 @@ struct ClaudeSwapAccountAliasProjectionTests {
     }
 
     @Test
+    func `retained fingerprints skip email shaped aliases when the mailbox is empty`() {
+        let snapshots = ClaudeSwapAccountProjection.accountSnapshots(
+            from: self.list(
+                self.row(number: 1, email: "", alias: "owner@example.com", active: true)),
+            now: self.now)
+        let account = snapshots[0]
+        #expect(account.displayLabel == "owner@example.com")
+        #expect(account.accountEmail == nil)
+        #expect(ClaudeSwapRetainedUsageStore.fingerprint(from: account) == nil)
+        #expect(ClaudeSwapRetainedUsageStore.snapshotsForRetention(snapshots).isEmpty)
+    }
+
+    @Test
     func `cloud sync keys duplicate swap slots by source identity`() {
         let snapshots = ClaudeSwapAccountProjection.accountSnapshots(
             from: self.list(
