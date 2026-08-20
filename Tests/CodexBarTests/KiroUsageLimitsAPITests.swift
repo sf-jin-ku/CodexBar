@@ -118,6 +118,7 @@ struct KiroUsageLimitsAPITests {
         #expect(cost.currencyCode == "USD")
 
         let rows = snapshot.details.flatMap(\.rows)
+        #expect(rows.contains { $0.label == "Overages" && $0.value == "Enabled" })
         #expect(rows.contains { $0.label == "Overage usage" && $0.value == "3603.49 credits" })
         #expect(rows.contains { $0.label == "Overage credits left" && $0.value == "6396.51" })
     }
