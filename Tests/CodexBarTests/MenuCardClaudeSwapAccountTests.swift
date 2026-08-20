@@ -55,6 +55,7 @@ struct MenuCardClaudeSwapAccountTests {
             resetTimeDisplayStyle: .countdown,
             tokenCostUsageEnabled: false,
             showOptionalCreditsAndExtraUsage: false,
+            sourceLabel: ClaudeSwapAccountProjection.sourceLabel,
             hidePersonalInfo: hidePersonalInfo,
             now: now))
     }
@@ -155,6 +156,7 @@ struct MenuCardClaudeSwapAccountTests {
                 resetTimeDisplayStyle: .countdown,
                 tokenCostUsageEnabled: false,
                 showOptionalCreditsAndExtraUsage: false,
+                sourceLabel: ClaudeSwapAccountProjection.sourceLabel,
                 hidePersonalInfo: false,
                 now: now))
         }

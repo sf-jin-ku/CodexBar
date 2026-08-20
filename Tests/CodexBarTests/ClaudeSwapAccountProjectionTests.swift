@@ -62,6 +62,7 @@ struct ClaudeSwapAccountProjectionTests {
         #expect(active.snapshot?.updatedAt == self.now)
         #expect(active.snapshot?.identity?.accountEmail == "personal@example.com")
         #expect(active.snapshot?.identity?.accountOrganization == nil)
+        #expect(active.snapshot?.identity?.accountID == "claude-swap:2")
         #expect(active.snapshot?.identity?.loginMethod == "claude-swap")
 
         let inactive = try #require(snapshots.last)
@@ -283,6 +284,38 @@ struct ClaudeSwapAccountProjectionTests {
         #expect(payload.usage.identity?.accountOrganization == nil)
         #expect(encodedUsage["accountOrganization"] == nil || encodedUsage["accountOrganization"] is NSNull)
         #expect(encodedUsage["accountEmail"] as? String == "shared@example.com")
+        #expect(usage.identity?.accountID == "claude-swap:2")
+    }
+
+    @Test
+    func `cloud sync keys duplicate swap slots by source identity`() {
+        let snapshots = ClaudeSwapAccountProjection.accountSnapshots(
+            from: self.list(
+                self.row(number: 1, email: "shared@example.com", organizationName: "Sendbird"),
+                self.row(
+                    number: 2,
+                    email: "shared@example.com",
+                    organizationName: "Acme",
+                    active: true)),
+            now: self.now)
+        let names = snapshots.compactMap { account -> String? in
+            guard let usage = account.snapshot else { return nil }
+            let identity = usage.identity?.accountID
+                ?? usage.identity?.accountEmail
+                ?? "\(account.id.source):\(account.id.opaqueID)"
+            return AccountSnapshotSyncPayload(
+                provider: account.provider.instanceID,
+                deviceID: "test-device",
+                accountIdentity: identity,
+                displayLabel: account.accountEmail ?? "Account \(account.id.opaqueID)",
+                usage: usage).recordName
+        }
+
+        #expect(snapshots.map { $0.snapshot?.identity?.accountID } == [
+            "claude-swap:2",
+            "claude-swap:1",
+        ])
+        #expect(Set(names).count == 2)
     }
 
     @Test

@@ -100,7 +100,8 @@ public enum ClaudeSwapAccountProjection {
                 providerID: .claude,
                 accountEmail: row.email.isEmpty ? nil : row.email,
                 accountOrganization: nil,
-                loginMethod: self.sourceLabel))
+                loginMethod: self.sourceLabel,
+                accountID: "\(self.sourceName):\(row.number)"))
     }
 
     private static func scopedRateWindows(for row: ClaudeSwapAccountRow) -> [NamedRateWindow] {
