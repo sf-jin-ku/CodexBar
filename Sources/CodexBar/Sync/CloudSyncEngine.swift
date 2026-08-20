@@ -1311,7 +1311,24 @@ extension CloudSyncEngine {
             self.requeuePendingSnapshotDeletes()
             for payload in self.pendingSnapshots {
                 let hash = try CanonicalSyncJSON.hash(payload)
-                guard self.lastSnapshotHashes[payload.recordName] != hash else { continue }
+                let predecessors = CloudSyncSnapshotMigration.predecessorNames(
+                    for: payload,
+                    obsoleteNames: obsoleteNames)
+                // Replace, don't union: a later live email-keyed snapshot must not stay queued
+                // for delete after the slot-keyed save is confirmed.
+                CloudSyncSnapshotMigration.assigningPredecessors(
+                    predecessors,
+                    to: payload.recordName,
+                    pending: &self.persistenceEnvelope.pendingPredecessorDeletes)
+                let alreadyPublished = self.lastSnapshotHashes[payload.recordName] == hash
+                if alreadyPublished {
+                    if !predecessors.isEmpty {
+                        await self.finishConfirmedSnapshotMigrations(
+                            savedRecordNames: [payload.recordName],
+                            syncEngine: engine)
+                    }
+                    continue
+                }
                 let recordID = self.recordID(named: payload.recordName)
                 let record = self.record(type: .accountSnapshot, id: recordID)
                 record["schemaVersion"] = payload.schemaVersion as CKRecordValue
@@ -1323,18 +1340,9 @@ extension CloudSyncEngine {
                 record.encryptedValues["usagePayload"] = try CanonicalSyncJSON.string(payload.usage) as CKRecordValue
                 self.desiredRecords[recordID] = record
                 self.persistenceEnvelope.fleetSnapshots[payload.recordName] = payload
-                let predecessors = CloudSyncSnapshotMigration.predecessorNames(
-                    for: payload,
-                    obsoleteNames: obsoleteNames)
                 if predecessors.isEmpty {
                     self.lastSnapshotHashes[payload.recordName] = hash
                 }
-                // Replace, don't union: a later live email-keyed snapshot must not stay queued
-                // for delete after the slot-keyed save is confirmed.
-                CloudSyncSnapshotMigration.assigningPredecessors(
-                    predecessors,
-                    to: payload.recordName,
-                    pending: &self.persistenceEnvelope.pendingPredecessorDeletes)
                 engine.state.add(pendingRecordZoneChanges: [.saveRecord(recordID)])
             }
             self.pendingSnapshots = []

@@ -456,6 +456,23 @@ struct CloudSyncSnapshotMigrationSaveThenDeleteTests {
     }
 
     @Test
+    func `already published replacements still delete newly obsolete predecessors`() throws {
+        let slot = Self.claudeSnapshot(accountID: "claude-swap:2", email: "owner@example.com")
+        let predecessor = try #require(slot.emailKeyedPredecessorRecordName())
+        var pending: [String: Set<String>] = [:]
+
+        CloudSyncSnapshotMigration.assigningPredecessors(
+            [predecessor],
+            to: slot.recordName,
+            pending: &pending)
+        #expect(
+            CloudSyncSnapshotMigration.takeDeletes(
+                forSavedRecordNames: [slot.recordName],
+                pending: &pending) == [predecessor])
+        #expect(pending.isEmpty)
+    }
+
+    @Test
     func `pending predecessors drop names that are live again`() throws {
         let slot = Self.claudeSnapshot(accountID: "claude-swap:2", email: "owner@example.com")
         let predecessor = try #require(slot.emailKeyedPredecessorRecordName())
