@@ -149,6 +149,33 @@ struct ClaudeSwapAccountProjectionTests {
     }
 
     @Test
+    func `unavailable attached windows drop expired lanes and keep remaining at limit`() throws {
+        let list = ClaudeSwapAccountList(
+            activeAccountNumber: 1,
+            accounts: [
+                ClaudeSwapAccountRow(
+                    number: 1,
+                    email: "a@b.c",
+                    isActive: true,
+                    usageStatus: .unavailable,
+                    fiveHour: ClaudeSwapUsageWindow(
+                        usedPercent: 100,
+                        resetsAt: self.now.addingTimeInterval(-60)),
+                    sevenDay: ClaudeSwapUsageWindow(
+                        usedPercent: 100,
+                        resetsAt: self.now.addingTimeInterval(86400))),
+            ])
+
+        let account = try #require(ClaudeSwapAccountProjection.accountSnapshots(from: list, now: self.now).first)
+        #expect(account.snapshot?.primary == nil)
+        #expect(account.snapshot?.secondary?.usedPercent == 100)
+        let error = try #require(account.error)
+        #expect(error.contains("Weekly limit reached"))
+        #expect(!error.contains("Session limit reached"))
+        #expect(!error.contains("Resets now"))
+    }
+
+    @Test
     func `names each exhausted window including scoped models`() throws {
         let sessionReset = Date(timeIntervalSince1970: 1_782_003_600)
         let weeklyReset = Date(timeIntervalSince1970: 1_782_259_200)

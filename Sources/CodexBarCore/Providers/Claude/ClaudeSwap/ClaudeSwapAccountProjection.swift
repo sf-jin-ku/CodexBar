@@ -69,7 +69,16 @@ public enum ClaudeSwapAccountProjection {
         switch row.usageStatus {
         case .ok, .unavailable:
             if let projected = self.projectedUsageSnapshot(for: row, now: now) {
-                return projected
+                if row.usageStatus == .ok {
+                    return projected
+                }
+                if let pruned = self.prunedAtLimitSnapshot(
+                    projected,
+                    identity: projected.identity ?? self.identitySnapshot(for: row),
+                    now: now)
+                {
+                    return pruned
+                }
             }
             guard row.usageStatus == .unavailable else { return nil }
             return self.retainedAtLimitSnapshot(previous, matching: row, now: now)
