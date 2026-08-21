@@ -200,6 +200,23 @@ struct CodexSpendControlsMonthlyUsageTests {
     }
 
     @Test
+    func `unmappable enforcement mode is an enrichment failure`() throws {
+        let malformed = try self.decodeMonthlyUsage(
+            #"""
+            {
+              "current_month_usage": 12,
+              "effective_monthly_limit": {
+                "limit": 7000,
+                "enforcement_mode": {"mode": "HARD_CAP"}
+              }
+            }
+            """#)
+
+        #expect(malformed.codexCreditLimitSnapshot(updatedAt: Date())?.limit == 7000)
+        #expect(malformed.monthlyLimitMappingFailed)
+    }
+
+    @Test
     func `monthly usage clamps negative usage and accepts numeric strings`() throws {
         let response = try self.decodeMonthlyUsage(self.monthlyUsageJSON(usage: #""-20""#, limit: #""7000""#))
         let snapshot = try #require(response.codexCreditLimitSnapshot(updatedAt: Date()))
@@ -326,6 +343,30 @@ struct CodexSpendControlsMonthlyUsageTests {
         #expect(result.strategyKind == original.strategyKind)
         #expect(result.diagnostic == original.diagnostic)
         #expect(!original.codexMonthlyLimitEnrichmentFailed)
+        #expect(result.codexMonthlyLimitEnrichmentFailed)
+    }
+
+    @Test
+    func `O auth helper treats a missing account id as enrichment failure`() async throws {
+        let usageJSON = self.educationUsageJSON(accountId: nil)
+        let usage = try self.decodeUsage(usageJSON)
+        let original = try CodexOAuthFetchStrategy._mapResultForTesting(
+            Data(usageJSON.utf8),
+            credentials: self.makeCredentials())
+
+        let invocations = InvocationCounter()
+        let result = try await CodexOAuthFetchStrategy._applySpendControlsMonthlyLimitForTesting(
+            original,
+            usage: usage,
+            credentials: self.makeCredentials(),
+            context: self.makeContext(),
+            fetcher: { _ in
+                await invocations.increment()
+                throw ExpectedError.failed
+            })
+
+        #expect(await invocations.count() == 0)
+        #expect(result.credits == original.credits)
         #expect(result.codexMonthlyLimitEnrichmentFailed)
     }
 

@@ -644,9 +644,11 @@ struct CodexOAuthFetchStrategy: ProviderFetchStrategy {
         -> ProviderFetchResult
     {
         guard context.includeCredits,
-              CodexSpendControlsMonthlyUsageGate.shouldFetch(response: usage),
-              let accountId = self.firstNonEmptyAccountId(credentials.accountId, usage.accountId)
+              CodexSpendControlsMonthlyUsageGate.shouldFetch(response: usage)
         else { return result }
+        guard let accountId = self.firstNonEmptyAccountId(credentials.accountId, usage.accountId) else {
+            return result.markingMonthlyLimitEnrichmentFailed()
+        }
 
         do {
             let response = try await fetcher(accountId)

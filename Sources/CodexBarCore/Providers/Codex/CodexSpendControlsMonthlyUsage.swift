@@ -23,6 +23,7 @@ public struct CodexSpendControlsMonthlyUsageResponse: Decodable, Sendable {
     }
 
     public var monthlyLimitMappingFailed: Bool {
+        if self.effectiveMonthlyLimit?.enforcementModeWasUnmappable == true { return true }
         if self.hasInactiveEnforcement { return false }
         if self.effectiveMonthlyLimit?.limitWasUnmappable == true { return true }
         guard self.effectiveMonthlyLimit?.limit ?? 0 > 0 else { return false }
@@ -54,6 +55,7 @@ public struct CodexSpendControlsMonthlyUsageResponse: Decodable, Sendable {
         public let limit: Double?
         public let limitWasUnmappable: Bool
         public let enforcementMode: String?
+        public let enforcementModeWasUnmappable: Bool
         public let limitMode: String?
 
         enum CodingKeys: String, CodingKey {
@@ -69,7 +71,11 @@ public struct CodexSpendControlsMonthlyUsageResponse: Decodable, Sendable {
                 forKey: .limit)
             self.limit = decodedLimit.value
             self.limitWasUnmappable = decodedLimit.unmappable
-            self.enforcementMode = try? container.decodeIfPresent(String.self, forKey: .enforcementMode)
+            let decodedMode = CodexSpendControlsMonthlyUsageResponse.decodeOptionalStringResult(
+                container,
+                forKey: .enforcementMode)
+            self.enforcementMode = decodedMode.value
+            self.enforcementModeWasUnmappable = decodedMode.unmappable
             self.limitMode = try? container.decodeIfPresent(String.self, forKey: .limitMode)
         }
     }
@@ -101,6 +107,20 @@ public struct CodexSpendControlsMonthlyUsageResponse: Decodable, Sendable {
                 return (parsed, false)
             }
             return (nil, true)
+        }
+        return (nil, true)
+    }
+
+    fileprivate static func decodeOptionalStringResult<Key: CodingKey>(
+        _ container: KeyedDecodingContainer<Key>,
+        forKey key: Key) -> (value: String?, unmappable: Bool)
+    {
+        guard container.contains(key) else { return (nil, false) }
+        if (try? container.decodeNil(forKey: key)) == true {
+            return (nil, false)
+        }
+        if let value = try? container.decode(String.self, forKey: key) {
+            return (value, false)
         }
         return (nil, true)
     }
