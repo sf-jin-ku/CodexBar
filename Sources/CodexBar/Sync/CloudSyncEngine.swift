@@ -1199,8 +1199,9 @@ extension CloudSyncEngine {
             await self.record(error: error)
         }
         let liveNames = CloudSyncSnapshotMigration.liveSnapshotRecordNames(
-            pendingRecordNames: self.pendingSnapshots.map(\.recordName),
-            storedRecordNames: self.persistenceEnvelope.fleetSnapshots.keys)
+            pendingRecordNames: self.pendingSnapshots.map(\.recordName) +
+                self.desiredRecords.keys.map(\.recordName),
+            storedRecordNames: self.lastSnapshotHashes.keys)
         for recordID in CloudSyncSnapshotMigration.retryableFailedDeletes(failures, liveNames: liveNames) {
             self.rememberPendingSnapshotDeletes([recordID.recordName])
             let delay = failures[recordID].flatMap(CloudSyncSnapshotMigration.retryDelay(for:)) ?? 1
@@ -1233,8 +1234,9 @@ extension CloudSyncEngine {
     private func requeuePendingSnapshotDeletes() {
         guard let engine = self.engine else { return }
         let liveNames = CloudSyncSnapshotMigration.liveSnapshotRecordNames(
-            pendingRecordNames: self.pendingSnapshots.map(\.recordName),
-            storedRecordNames: self.persistenceEnvelope.fleetSnapshots.keys)
+            pendingRecordNames: self.pendingSnapshots.map(\.recordName) +
+                self.desiredRecords.keys.map(\.recordName),
+            storedRecordNames: self.lastSnapshotHashes.keys)
         let names = CloudSyncSnapshotMigration.pendingDeletesToRequeue(
             pendingDeletes: self.persistenceEnvelope.pendingSnapshotDeletes,
             liveNames: liveNames)
@@ -1320,6 +1322,7 @@ extension CloudSyncEngine {
                     predecessors,
                     to: payload.recordName,
                     pending: &self.persistenceEnvelope.pendingPredecessorDeletes)
+                // Hashes are recorded only after CloudKit confirms a save.
                 let alreadyPublished = self.lastSnapshotHashes[payload.recordName] == hash
                 if alreadyPublished {
                     if !predecessors.isEmpty {
@@ -1340,9 +1343,6 @@ extension CloudSyncEngine {
                 record.encryptedValues["usagePayload"] = try CanonicalSyncJSON.string(payload.usage) as CKRecordValue
                 self.desiredRecords[recordID] = record
                 self.persistenceEnvelope.fleetSnapshots[payload.recordName] = payload
-                if predecessors.isEmpty {
-                    self.lastSnapshotHashes[payload.recordName] = hash
-                }
                 engine.state.add(pendingRecordZoneChanges: [.saveRecord(recordID)])
             }
             self.pendingSnapshots = []

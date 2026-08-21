@@ -367,8 +367,9 @@ struct CloudSyncSnapshotMigrationDeleteRetryTests {
 
         let liveNames = CloudSyncSnapshotMigration.liveSnapshotRecordNames(
             pendingRecordNames: ["snap-pending"],
-            storedRecordNames: ["snap-live", "snap-slot"])
-        #expect(liveNames == ["snap-pending", "snap-live", "snap-slot"])
+            storedRecordNames: ["snap-confirmed"])
+        #expect(liveNames == ["snap-pending", "snap-confirmed"])
+        #expect(!liveNames.contains("snap-remote-cache"))
 
         let retryable = Set(
             CloudSyncSnapshotMigration.retryableFailedDeletes(
