@@ -70,6 +70,24 @@ enum CodexMonthlyCreditPreservation {
         }
         return .notFound
     }
+
+    static func shouldPublishSelectedCredits(
+        enrichmentFailed: Bool,
+        publishedCredits: CreditsSnapshot?,
+        currentCredits: CreditsSnapshot?,
+        cachedCredits: CreditsSnapshot?) -> Bool
+    {
+        if !enrichmentFailed || publishedCredits != nil { return true }
+        return currentCredits?.codexCreditLimit == nil && cachedCredits?.codexCreditLimit == nil
+    }
+
+    static func hydrationCredits(
+        existingCredits: CreditsSnapshot?,
+        persistedCredits: CreditsSnapshot?) -> CreditsSnapshot?
+    {
+        guard existingCredits == nil else { return nil }
+        return persistedCredits
+    }
 }
 
 protocol CodexAccountUsageSnapshotStoring: Sendable {

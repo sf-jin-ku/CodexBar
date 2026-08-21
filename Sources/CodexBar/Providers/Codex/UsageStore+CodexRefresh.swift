@@ -276,4 +276,27 @@ extension UsageStore {
         self.codexPlanHistoryBackfillTask?.cancel()
         self.codexPlanHistoryBackfillTask = nil
     }
+
+    func publishHydratedCodexCreditsIfNeeded(from persistedCredits: CreditsSnapshot?, accountKey: String?) {
+        guard let credits = CodexMonthlyCreditPreservation.hydrationCredits(
+            existingCredits: self.credits,
+            persistedCredits: persistedCredits)
+        else { return }
+        self.credits = credits
+        self.lastCreditsError = nil
+        self.lastCreditsSnapshot = credits
+        self.lastCreditsSnapshotAccountKey = accountKey
+        self.lastCreditsSource = .api
+    }
+
+    func shouldPublishSelectedCodexCredits(
+        _ result: ProviderFetchResult,
+        publishedCredits: CreditsSnapshot?) -> Bool
+    {
+        CodexMonthlyCreditPreservation.shouldPublishSelectedCredits(
+            enrichmentFailed: result.codexMonthlyLimitEnrichmentFailed,
+            publishedCredits: publishedCredits,
+            currentCredits: self.credits,
+            cachedCredits: self.lastCreditsSnapshot)
+    }
 }

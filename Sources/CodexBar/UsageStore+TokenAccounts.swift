@@ -1435,7 +1435,7 @@ extension UsageStore {
             self.lastFetchAttempts[.codex] = outcome.attempts
             let publishedCredits = self.codexAccountSnapshots.first(where: { $0.id == account.id })?.credits
                 ?? result.credits
-            if !result.codexMonthlyLimitEnrichmentFailed || publishedCredits != nil {
+            if self.shouldPublishSelectedCodexCredits(result, publishedCredits: publishedCredits) {
                 self.credits = publishedCredits
                 self.lastCreditsError = nil
                 self.lastCreditsSnapshot = publishedCredits

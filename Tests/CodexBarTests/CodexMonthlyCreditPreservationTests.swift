@@ -107,6 +107,31 @@ struct CodexMonthlyCreditPreservationTests {
     }
 
     @Test
+    func `enrichment failure without a cap publishes nil instead of keeping generic credits`() {
+        let generic = CreditsSnapshot(remaining: 12, events: [], updatedAt: Date())
+        #expect(
+            CodexMonthlyCreditPreservation.shouldPublishSelectedCredits(
+                enrichmentFailed: true,
+                publishedCredits: nil,
+                currentCredits: generic,
+                cachedCredits: generic))
+        #expect(
+            !CodexMonthlyCreditPreservation.shouldPublishSelectedCredits(
+                enrichmentFailed: true,
+                publishedCredits: nil,
+                currentCredits: Self.credits(limitUsed: 27, limit: 1000, remaining: 0, at: Date()),
+                cachedCredits: nil))
+        #expect(
+            CodexMonthlyCreditPreservation.hydrationCredits(
+                existingCredits: nil,
+                persistedCredits: generic) == generic)
+        #expect(
+            CodexMonthlyCreditPreservation.hydrationCredits(
+                existingCredits: generic,
+                persistedCredits: Self.credits(limitUsed: 1, limit: 2, remaining: 0, at: Date())) == nil)
+    }
+
+    @Test
     func `incoming monthly limit wins even after enrichment failure`() {
         let now = Date()
         let incoming = Self.credits(limitUsed: 40, limit: 2000, remaining: 1, at: now)
@@ -210,6 +235,97 @@ extension CodexAccountScopedRefreshTests {
         #expect(store.credits == nil)
         #expect(store.lastCreditsSnapshot == nil)
         #expect(store.lastCreditsSource == .none)
+        #expect(store.lastCreditsSnapshotAccountKey == "biz@example.com")
+    }
+
+    @Test
+    func `enrichment failure without a cap publishes nil from the selected account path`() async {
+        let suite = "CodexMonthlyCreditPreservationTests-publish-nil-generic"
+        let settings = self.makeSettingsStore(suite: suite)
+        settings.refreshFrequency = .manual
+        settings._test_liveSystemCodexAccount = self.liveAccount(email: "biz@example.com")
+        defer { settings._test_liveSystemCodexAccount = nil }
+
+        let store = self.makeUsageStore(settings: settings)
+        let account = CodexVisibleAccount(
+            id: "live:biz@example.com",
+            email: "biz@example.com",
+            workspaceAccountID: nil,
+            storedAccountID: nil,
+            selectionSource: .liveSystem,
+            isActive: true,
+            isLive: true,
+            canReauthenticate: false,
+            canRemove: false)
+        let usage = self.codexSnapshot(email: "biz@example.com", usedPercent: 12)
+        let prior = CreditsSnapshot(remaining: 12, events: [], updatedAt: Date())
+        store.credits = prior
+        store.lastCreditsSnapshot = prior
+        store.lastCreditsSnapshotAccountKey = "biz@example.com"
+        store.lastCreditsSource = .api
+        store.codexAccountSnapshots = [
+            CodexAccountUsageSnapshot(
+                account: account,
+                snapshot: usage,
+                error: nil,
+                sourceLabel: "api",
+                credits: nil),
+        ]
+
+        let result = ProviderFetchResult(
+            usage: usage,
+            credits: nil,
+            dashboard: nil,
+            sourceLabel: "api",
+            strategyID: "stacked-test",
+            strategyKind: .apiToken,
+            codexMonthlyLimitEnrichmentFailed: true)
+        let outcome = ProviderFetchOutcome(
+            result: .success(result),
+            attempts: [ProviderFetchAttempt(
+                strategyID: "stacked-test",
+                kind: .apiToken,
+                wasAvailable: true,
+                errorDescription: nil)])
+
+        await store.applySelectedCodexVisibleAccountOutcome(
+            outcome,
+            account: account,
+            snapshot: usage,
+            sourceLabel: "api",
+            limitResetOwnerKey: nil)
+
+        #expect(store.credits == nil)
+        #expect(store.lastCreditsSnapshot == nil)
+        #expect(store.lastCreditsSource == .none)
+    }
+
+    @Test
+    func `hydration copies persisted monthly credits when selected credits are empty`() {
+        let suite = "CodexMonthlyCreditPreservationTests-hydrate-credits"
+        let settings = self.makeSettingsStore(suite: suite)
+        settings.refreshFrequency = .manual
+        let store = self.makeUsageStore(settings: settings)
+        let persisted = CreditsSnapshot(
+            remaining: 0,
+            events: [],
+            updatedAt: Date(),
+            codexCreditLimit: CodexCreditLimitSnapshot(
+                used: 27,
+                limit: 1000,
+                remainingPercent: 97.3,
+                resetsAt: nil,
+                updatedAt: Date()))
+
+        store.publishHydratedCodexCreditsIfNeeded(from: persisted, accountKey: "biz@example.com")
+        #expect(store.credits?.codexCreditLimit?.limit == 1000)
+        #expect(store.lastCreditsSnapshot?.codexCreditLimit?.used == 27)
+        #expect(store.lastCreditsSnapshotAccountKey == "biz@example.com")
+        #expect(store.lastCreditsSource == .api)
+
+        let other = CreditsSnapshot(remaining: 4, events: [], updatedAt: Date())
+        store.publishHydratedCodexCreditsIfNeeded(from: other, accountKey: "other@example.com")
+        #expect(store.credits?.codexCreditLimit?.limit == 1000)
         #expect(store.lastCreditsSnapshotAccountKey == "biz@example.com")
     }
 }
