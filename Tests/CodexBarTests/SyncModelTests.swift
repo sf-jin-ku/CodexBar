@@ -595,6 +595,9 @@ struct CloudSyncSnapshotMigrationSaveThenDeleteTests {
 
         let merged = CloudSyncSnapshotMigration.mergingPendingSnapshots([], with: [newer])
         #expect(merged.map(\.recordName) == [newer.recordName])
+        #expect(
+            CloudSyncSnapshotMigration.mergingPendingSnapshots([newer], with: [older]).first?.fetchedAt
+                == newer.fetchedAt)
 
         var last = [newer.recordName: olderHash]
         let unpublished = CloudSyncSnapshotMigration.unpublishedFleetSnapshots(

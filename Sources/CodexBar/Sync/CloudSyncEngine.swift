@@ -330,13 +330,9 @@ enum CloudSyncSnapshotMigration {
         for (index, payload) in pending.enumerated() {
             byName[payload.recordName] = index
         }
-        for payload in extras {
-            if let index = byName[payload.recordName] {
-                result[index] = payload
-            } else {
-                byName[payload.recordName] = result.count
-                result.append(payload)
-            }
+        for payload in extras where byName[payload.recordName] == nil {
+            byName[payload.recordName] = result.count
+            result.append(payload)
         }
         return result
     }
@@ -964,6 +960,10 @@ actor CloudSyncEngine: CKSyncEngineDelegate {
     }
 
     private func applyAccountSnapshot(_ record: CKRecord) async throws {
+        guard !CloudSyncSnapshotMigration.hasInFlightSave(
+            recordName: record.recordID.recordName,
+            pendingSaveHashes: self.pendingSaveHashes)
+        else { return }
         guard let providerRaw = record["provider"] as? String,
               let provider = ProviderInstanceID(rawValue: providerRaw),
               let deviceID = record["deviceID"] as? String,
