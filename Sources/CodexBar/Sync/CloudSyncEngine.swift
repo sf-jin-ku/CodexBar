@@ -462,9 +462,6 @@ actor CloudSyncEngine: CKSyncEngineDelegate {
             try await self.queueDeviceRecord()
             self.startPeriodicFetchTimer()
             self.scheduleFetchChanges(scopedToSyncZone: !initialized)
-            if !self.pendingSnapshots.isEmpty {
-                await self.pushPendingSnapshots()
-            }
         } catch {
             await self.record(error: error)
         }
@@ -1119,6 +1116,7 @@ actor CloudSyncEngine: CKSyncEngineDelegate {
         self.desiredRecords = [:]
         self.quotaRetryState.reset()
         self.pendingSaveHashes = [:]
+        self.pendingSnapshots = []
         if clearPersistence {
             self.persistenceEnvelope = .init(stateSerialization: nil, encodedSystemFields: [:])
             self.lastSnapshotHashes = [:]
