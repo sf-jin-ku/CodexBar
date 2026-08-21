@@ -103,7 +103,7 @@ extension UsageStore {
                 self.lastCreditsError = nil
                 self.lastCreditsSnapshot = credits
                 self.lastCreditsSnapshotAccountKey = applyGuard.accountKey
-                self.lastCreditsSource = .api
+                self.lastCreditsSource = credits == nil ? .none : .api
                 self.creditsFailureStreak = 0
                 self.lastCodexAccountScopedRefreshGuard = applyGuard
             }
@@ -167,7 +167,7 @@ extension UsageStore {
         }
     }
 
-    private func loadLatestCodexCredits(accountKey: String?) async throws -> CreditsSnapshot {
+    private func loadLatestCodexCredits(accountKey: String?) async throws -> CreditsSnapshot? {
         if let override = self._test_codexCreditsLoaderOverride {
             return try await override()
         }
@@ -180,22 +180,24 @@ extension UsageStore {
             return self.lastCreditsSnapshot
         }
 
-        for strategy in strategies {
+        strategyLoop: for strategy in strategies {
             guard await strategy.isAvailable(context) else { continue }
             do {
                 let result = try await strategy.fetch(context)
-                if let credits = CodexMonthlyCreditPreservation.merging(
+                switch CodexMonthlyCreditPreservation.standaloneRefreshOutcome(
                     incoming: result.credits,
                     prior: prior,
                     enrichmentFailed: result.codexMonthlyLimitEnrichmentFailed)
                 {
+                case let .published(credits):
                     return credits
+                case .notFound:
+                    lastAvailableError = UsageError.noRateLimitsFound
+                    guard context.sourceMode == .auto else { break strategyLoop }
                 }
-                lastAvailableError = UsageError.noRateLimitsFound
-                guard context.sourceMode == .auto else { break }
             } catch {
                 lastAvailableError = error
-                guard strategy.shouldFallback(on: error, context: context) else { break }
+                guard strategy.shouldFallback(on: error, context: context) else { break strategyLoop }
             }
         }
         throw lastAvailableError ?? ProviderFetchError.noAvailableStrategy(.codex)

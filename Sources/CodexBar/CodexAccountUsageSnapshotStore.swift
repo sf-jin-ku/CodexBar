@@ -47,6 +47,29 @@ enum CodexMonthlyCreditPreservation {
             updatedAt: incoming.updatedAt,
             codexCreditLimit: priorLimit)
     }
+
+    enum StandaloneRefreshOutcome: Equatable {
+        case published(CreditsSnapshot?)
+        case notFound
+    }
+
+    static func standaloneRefreshOutcome(
+        incoming: CreditsSnapshot?,
+        prior: CreditsSnapshot?,
+        enrichmentFailed: Bool) -> StandaloneRefreshOutcome
+    {
+        if let credits = self.merging(
+            incoming: incoming,
+            prior: prior,
+            enrichmentFailed: enrichmentFailed)
+        {
+            return .published(credits)
+        }
+        if enrichmentFailed {
+            return .published(nil)
+        }
+        return .notFound
+    }
 }
 
 protocol CodexAccountUsageSnapshotStoring: Sendable {

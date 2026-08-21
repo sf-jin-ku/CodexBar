@@ -66,6 +66,23 @@ struct CodexMonthlyCreditPreservationTests {
     }
 
     @Test
+    func `enrichment failure without a monthly cap clears generic credits`() {
+        let now = Date()
+        let prior = CreditsSnapshot(remaining: 12, events: [], updatedAt: now)
+
+        #expect(
+            CodexMonthlyCreditPreservation.standaloneRefreshOutcome(
+                incoming: nil,
+                prior: prior,
+                enrichmentFailed: true) == .published(nil))
+        #expect(
+            CodexMonthlyCreditPreservation.standaloneRefreshOutcome(
+                incoming: nil,
+                prior: prior,
+                enrichmentFailed: false) == .notFound)
+    }
+
+    @Test
     func `standalone credits refresh keeps the monthly cap after enrichment failure`() {
         let now = Date()
         let incoming = CreditsSnapshot(remaining: 9, events: [], updatedAt: now)
