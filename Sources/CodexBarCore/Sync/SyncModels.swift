@@ -231,6 +231,7 @@ public struct AccountSnapshotSyncPayload: Codable, Sendable {
     /// predecessor is deleted only after the slot-keyed replacement is saved.
     /// Other providers must not classify an email-to-durable-ID change as obsolete.
     public func emailKeyedPredecessorRecordName() -> String? {
+        // Provider-specific by design: only Claude Swap slot keys retire leftover email-keyed CloudKit snapshots.
         guard self.provider == .claude,
               self.usage.identity?.loginMethod == ClaudeSwapAccountProjection.sourceLabel
         else { return nil }

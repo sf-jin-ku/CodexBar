@@ -193,6 +193,15 @@ enum CloudSyncSnapshotMigration {
 
     static func takeDeletes(
         forSavedRecordNames savedNames: [String],
+        pending: inout [String: Set<String>],
+        afterLiveSnapshotReconciliation hasReconciledLiveSnapshots: Bool) -> Set<String>
+    {
+        guard hasReconciledLiveSnapshots else { return [] }
+        return self.takeDeletes(forSavedRecordNames: savedNames, pending: &pending)
+    }
+
+    static func takeDeletes(
+        forSavedRecordNames savedNames: [String],
         pending: inout [String: Set<String>]) -> Set<String>
     {
         var toDrop: Set<String> = []
@@ -401,6 +410,8 @@ actor CloudSyncEngine: CKSyncEngineDelegate {
     private var lastKnownIncludeSecrets: Bool?
     private var quotaRetryState = CloudSyncQuotaRetryState()
     private var didRehydrateFleetState = false
+    /// Restored predecessor mappings must not delete until local live snapshots have been applied.
+    private var hasReconciledLiveSnapshots = false
     private let logger = CodexBarLog.logger(LogCategories.settings)
 
     init(
@@ -1117,6 +1128,7 @@ actor CloudSyncEngine: CKSyncEngineDelegate {
         self.quotaRetryState.reset()
         self.pendingSaveHashes = [:]
         self.pendingSnapshots = []
+        self.hasReconciledLiveSnapshots = false
         if clearPersistence {
             self.persistenceEnvelope = .init(stateSerialization: nil, encodedSystemFields: [:])
             self.lastSnapshotHashes = [:]
@@ -1243,7 +1255,8 @@ extension CloudSyncEngine {
     {
         let toDrop = CloudSyncSnapshotMigration.takeDeletes(
             forSavedRecordNames: savedRecordNames,
-            pending: &self.persistenceEnvelope.pendingPredecessorDeletes)
+            pending: &self.persistenceEnvelope.pendingPredecessorDeletes,
+            afterLiveSnapshotReconciliation: self.hasReconciledLiveSnapshots)
         CloudSyncSnapshotMigration.applyConfirmedSaveHashes(
             savedRecordNames: savedRecordNames,
             pendingSaveHashes: &self.pendingSaveHashes,
@@ -1387,6 +1400,7 @@ extension CloudSyncEngine {
                     CloudSyncSnapshotMigration.cancelledPersistedDeletes(
                         pendingDeletes: self.persistenceEnvelope.pendingSnapshotDeletes,
                         liveNames: Set(self.pendingSnapshots.map(\.recordName))))
+                self.hasReconciledLiveSnapshots = true
             }
             self.requeuePendingSnapshotDeletes()
             var stillPending: [AccountSnapshotSyncPayload] = []

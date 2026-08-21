@@ -539,6 +539,26 @@ struct CloudSyncSnapshotMigrationSaveThenDeleteTests {
     }
 
     @Test
+    func `restored predecessor deletes wait until live snapshots reconcile`() throws {
+        let slot = Self.claudeSnapshot(accountID: "claude-swap:2", email: "owner@example.com")
+        let predecessor = try #require(slot.emailKeyedPredecessorRecordName())
+        var pending = [slot.recordName: Set([predecessor])]
+
+        #expect(
+            CloudSyncSnapshotMigration.takeDeletes(
+                forSavedRecordNames: [slot.recordName],
+                pending: &pending,
+                afterLiveSnapshotReconciliation: false).isEmpty)
+        #expect(pending[slot.recordName] == [predecessor])
+        #expect(
+            CloudSyncSnapshotMigration.takeDeletes(
+                forSavedRecordNames: [slot.recordName],
+                pending: &pending,
+                afterLiveSnapshotReconciliation: true) == [predecessor])
+        #expect(pending.isEmpty)
+    }
+
+    @Test
     func `persisted deletes are cancelled when the predecessor is live again`() throws {
         let slot = Self.claudeSnapshot(accountID: "claude-swap:2", email: "owner@example.com")
         let predecessor = try #require(slot.emailKeyedPredecessorRecordName())
