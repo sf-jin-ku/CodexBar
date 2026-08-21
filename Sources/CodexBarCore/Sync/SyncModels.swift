@@ -226,12 +226,16 @@ public struct AccountSnapshotSyncPayload: Codable, Sendable {
         return CanonicalSyncJSON.hash(data: Data(identity.lowercased().utf8))
     }
 
-    /// CloudKit record IDs cannot be renamed. When this snapshot is keyed by a distinct
-    /// account ID that replaced a mailbox identity, the previous email-keyed record on the
-    /// same device is the predecessor that must be deleted after the replacement is saved.
+    /// CloudKit record IDs cannot be renamed. Claude Swap snapshots keyed by
+    /// `claude-swap:<slot>` replace a same-device email-keyed record; that
+    /// predecessor is deleted only after the slot-keyed replacement is saved.
+    /// Other providers must not classify an email-to-durable-ID change as obsolete.
     public func emailKeyedPredecessorRecordName() -> String? {
+        guard self.provider == .claude,
+              self.usage.identity?.loginMethod == ClaudeSwapAccountProjection.sourceLabel
+        else { return nil }
         let accountID = self.usage.identity?.accountID?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        guard !accountID.isEmpty else { return nil }
+        guard accountID.hasPrefix("\(ClaudeSwapAccountProjection.sourceName):") else { return nil }
         let emailKey = Self.accountKey(for: self.usage.identity?.accountEmail)
         guard emailKey != "default",
               Self.accountKey(for: accountID) == self.accountKey,

@@ -226,6 +226,34 @@ struct SyncModelTests {
     }
 
     @Test
+    func `non Claude snapshot does not name an email keyed CloudKit predecessor`() {
+        let payload = Self.snapshot(
+            provider: .codex,
+            loginMethod: "pro",
+            accountID: "user-workspace-1",
+            email: "owner@example.com")
+        let emailKey = AccountSnapshotSyncPayload.accountKey(for: "owner@example.com")
+        let leftover = "snap-codex-\(emailKey)-device-id"
+
+        #expect(payload.emailKeyedPredecessorRecordName() == nil)
+        #expect(
+            AccountSnapshotSyncPayload.obsoleteEmailKeyedRecordNames(
+                liveSnapshots: [payload],
+                knownRecordNames: [leftover]).isEmpty)
+    }
+
+    @Test
+    func `claude subscription snapshot does not name an email keyed CloudKit predecessor`() {
+        let payload = Self.snapshot(
+            provider: .claude,
+            loginMethod: "Claude.ai",
+            accountID: "user_abc",
+            email: "owner@example.com")
+
+        #expect(payload.emailKeyedPredecessorRecordName() == nil)
+    }
+
+    @Test
     func `account snapshot ignores retired provider payload keys`() throws {
         let legacy = #"""
         {
@@ -270,18 +298,31 @@ struct SyncModelTests {
     }
 
     private static func claudeSnapshot(accountID: String, email: String) -> AccountSnapshotSyncPayload {
+        self.snapshot(
+            provider: .claude,
+            loginMethod: ClaudeSwapAccountProjection.sourceLabel,
+            accountID: accountID,
+            email: email)
+    }
+
+    private static func snapshot(
+        provider: ProviderInstanceID,
+        loginMethod: String,
+        accountID: String,
+        email: String) -> AccountSnapshotSyncPayload
+    {
         let usage = UsageSnapshot(
             primary: nil,
             secondary: nil,
             updatedAt: Date(timeIntervalSince1970: 100),
             identity: ProviderIdentitySnapshot(
-                providerID: .claude,
+                providerID: provider,
                 accountEmail: email,
                 accountOrganization: nil,
-                loginMethod: "claude-swap",
+                loginMethod: loginMethod,
                 accountID: accountID))
         return AccountSnapshotSyncPayload(
-            provider: .claude,
+            provider: provider,
             deviceID: "device-id",
             accountIdentity: accountID,
             displayLabel: email,
