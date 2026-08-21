@@ -93,7 +93,7 @@ extension UsageStore {
             return
         }
         do {
-            let credits = try await self.loadLatestCodexCredits()
+            let credits = try await self.loadLatestCodexCredits(accountKey: expectedGuard.accountKey)
             guard !Task.isCancelled else { return }
             guard let applyGuard = self.codexScopedNonUsageSuccessApplyGuard(
                 expectedGuard: expectedGuard) else { return }
@@ -167,7 +167,7 @@ extension UsageStore {
         }
     }
 
-    private func loadLatestCodexCredits() async throws -> CreditsSnapshot {
+    private func loadLatestCodexCredits(accountKey: String?) async throws -> CreditsSnapshot {
         if let override = self._test_codexCreditsLoaderOverride {
             return try await override()
         }
@@ -175,12 +175,20 @@ extension UsageStore {
         let context = self.makeFetchContext(provider: .codex, override: nil, includeCredits: true)
         let strategies = await descriptor.fetchPlan.pipeline.resolveStrategies(context)
         var lastAvailableError: Error?
+        let prior = await MainActor.run { () -> CreditsSnapshot? in
+            guard self.lastCreditsSnapshotAccountKey == accountKey else { return nil }
+            return self.lastCreditsSnapshot
+        }
 
         for strategy in strategies {
             guard await strategy.isAvailable(context) else { continue }
             do {
                 let result = try await strategy.fetch(context)
-                if let credits = result.credits {
+                if let credits = CodexMonthlyCreditPreservation.merging(
+                    incoming: result.credits,
+                    prior: prior,
+                    enrichmentFailed: result.codexMonthlyLimitEnrichmentFailed)
+                {
                     return credits
                 }
                 lastAvailableError = UsageError.noRateLimitsFound

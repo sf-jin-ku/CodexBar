@@ -66,6 +66,30 @@ struct CodexMonthlyCreditPreservationTests {
     }
 
     @Test
+    func `standalone credits refresh keeps the monthly cap after enrichment failure`() {
+        let now = Date()
+        let incoming = CreditsSnapshot(remaining: 9, events: [], updatedAt: now)
+        let prior = Self.credits(limitUsed: 27, limit: 1000, remaining: 0, at: now)
+        let result = ProviderFetchResult(
+            usage: UsageSnapshot(primary: nil, secondary: nil, updatedAt: now),
+            credits: incoming,
+            dashboard: nil,
+            sourceLabel: "api",
+            strategyID: "credits-refresh",
+            strategyKind: .apiToken,
+            codexMonthlyLimitEnrichmentFailed: true)
+
+        let published = CodexMonthlyCreditPreservation.merging(
+            incoming: result.credits,
+            prior: prior,
+            enrichmentFailed: result.codexMonthlyLimitEnrichmentFailed)
+
+        #expect(published?.remaining == 9)
+        #expect(published?.codexCreditLimit?.used == 27)
+        #expect(published?.codexCreditLimit?.limit == 1000)
+    }
+
+    @Test
     func `incoming monthly limit wins even after enrichment failure`() {
         let now = Date()
         let incoming = Self.credits(limitUsed: 40, limit: 2000, remaining: 1, at: now)
