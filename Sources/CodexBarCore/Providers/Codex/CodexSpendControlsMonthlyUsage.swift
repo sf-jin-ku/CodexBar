@@ -143,10 +143,10 @@ enum CodexSpendControlsMonthlyUsageGate {
         else { return false }
 
         return switch response.planType {
-        case .team, .business, .education, .quorum, .k12, .enterprise, .edu, .freeWorkspace:
-            true
-        case .guest, .free, .go, .plus, .pro, .unknown, nil:
+        case .guest, .free, .go, .plus, .pro:
             false
+        case .team, .business, .education, .quorum, .k12, .enterprise, .edu, .freeWorkspace, .unknown, nil:
+            true
         }
     }
 }

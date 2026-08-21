@@ -279,11 +279,13 @@ struct CodexSpendControlsMonthlyUsageTests {
     }
 
     @Test
-    func `missing plan does not gate the monthly endpoint`() throws {
-        let response = try self.decodeUsage(self.educationUsageJSON(planType: nil))
+    func `missing or unknown plan still fetches when spend controls are present`() throws {
+        let missing = try self.decodeUsage(self.educationUsageJSON(planType: nil))
+        #expect(missing.planType == nil)
+        #expect(CodexSpendControlsMonthlyUsageGate.shouldFetch(response: missing))
 
-        #expect(response.planType == nil)
-        #expect(!CodexSpendControlsMonthlyUsageGate.shouldFetch(response: response))
+        let unknown = try self.decodeUsage(self.educationUsageJSON(planType: "not-a-plan"))
+        #expect(CodexSpendControlsMonthlyUsageGate.shouldFetch(response: unknown))
     }
 
     @Test
