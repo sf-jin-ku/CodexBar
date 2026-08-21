@@ -328,4 +328,57 @@ extension CodexAccountScopedRefreshTests {
         #expect(store.credits?.codexCreditLimit?.limit == 1000)
         #expect(store.lastCreditsSnapshotAccountKey == "biz@example.com")
     }
+
+    @Test
+    func `standalone credits refresh persists the published cap onto the account snapshot`() async {
+        let suite = "CodexMonthlyCreditPreservationTests-persist-credits"
+        let settings = self.makeSettingsStore(suite: suite)
+        settings.refreshFrequency = .manual
+        settings._test_liveSystemCodexAccount = self.liveAccount(email: "biz@example.com")
+        defer { settings._test_liveSystemCodexAccount = nil }
+
+        let store = self.makeUsageStore(settings: settings)
+        let account = CodexVisibleAccount(
+            id: "live:biz@example.com",
+            email: "biz@example.com",
+            workspaceAccountID: nil,
+            storedAccountID: nil,
+            selectionSource: .liveSystem,
+            isActive: true,
+            isLive: true,
+            canReauthenticate: false,
+            canRemove: false)
+        let usage = self.codexSnapshot(email: "biz@example.com", usedPercent: 12)
+        store._setSnapshotForTesting(usage, provider: .codex)
+        store.codexAccountSnapshots = [
+            CodexAccountUsageSnapshot(
+                account: account,
+                snapshot: usage,
+                error: nil,
+                sourceLabel: "api",
+                credits: nil),
+        ]
+        let published = CreditsSnapshot(
+            remaining: 0,
+            events: [],
+            updatedAt: Date(),
+            codexCreditLimit: CodexCreditLimitSnapshot(
+                used: 27,
+                limit: 1000,
+                remainingPercent: 97.3,
+                resetsAt: nil,
+                updatedAt: Date()))
+        store._test_codexCreditsLoaderOverride = { published }
+        defer { store._test_codexCreditsLoaderOverride = nil }
+
+        await store.refreshCreditsIfNeeded()
+        #expect(store.credits?.codexCreditLimit?.limit == 1000)
+        #expect(store.codexAccountSnapshots.first?.credits?.codexCreditLimit?.used == 27)
+
+        store.credits = nil
+        store.lastCreditsSnapshot = nil
+        store.lastCreditsSource = .none
+        store.persistPublishedCodexCreditsIntoAccountSnapshotsIfNeeded()
+        #expect(store.codexAccountSnapshots.first?.credits == nil)
+    }
 }

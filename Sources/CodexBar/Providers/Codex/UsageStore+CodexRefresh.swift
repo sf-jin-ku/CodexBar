@@ -106,6 +106,7 @@ extension UsageStore {
                 self.lastCreditsSource = credits == nil ? .none : .api
                 self.creditsFailureStreak = 0
                 self.lastCodexAccountScopedRefreshGuard = applyGuard
+                self.persistPublishedCodexCreditsIntoAccountSnapshotsIfNeeded()
             }
             let codexSnapshot = await MainActor.run {
                 self.snapshots[.codex]
@@ -298,5 +299,22 @@ extension UsageStore {
             publishedCredits: publishedCredits,
             currentCredits: self.credits,
             cachedCredits: self.lastCreditsSnapshot)
+    }
+
+    func persistPublishedCodexCreditsIntoAccountSnapshotsIfNeeded() {
+        let accountKey = self.lastCreditsSnapshotAccountKey
+        guard let accountKey else { return }
+        let matches = self.codexAccountSnapshots.indices.filter { index in
+            CodexIdentityResolver.normalizeEmail(self.codexAccountSnapshots[index].account.email) == accountKey
+        }
+        guard matches.count == 1, let index = matches.first else { return }
+        let row = self.codexAccountSnapshots[index]
+        self.codexAccountSnapshots[index] = CodexAccountUsageSnapshot(
+            account: row.account,
+            snapshot: row.snapshot,
+            error: row.error,
+            sourceLabel: row.sourceLabel,
+            credits: self.credits)
+        self.codexAccountUsageSnapshotStore?.store(self.codexAccountSnapshots)
     }
 }
