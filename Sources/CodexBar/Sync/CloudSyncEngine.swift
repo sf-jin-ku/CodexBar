@@ -338,6 +338,7 @@ actor CloudSyncEngine: CKSyncEngineDelegate {
     private var lastSnapshotPushAt: Date?
     private var pendingSnapshots: [AccountSnapshotSyncPayload] = []
     private var lastSnapshotHashes: [String: String] = [:]
+    private var skippedTerminalReplacementHashes: [String: String] = [:]
     private var lastKnownProviderConfigs: [ProviderInstanceID: ProviderConfig] = [:]
     private var lastKnownPreferences: SyncedPreferences?
     private var lastKnownIncludeSecrets: Bool?
@@ -1045,6 +1046,7 @@ actor CloudSyncEngine: CKSyncEngineDelegate {
         if clearPersistence {
             self.persistenceEnvelope = .init(stateSerialization: nil, encodedSystemFields: [:])
             self.lastSnapshotHashes = [:]
+            self.skippedTerminalReplacementHashes = [:]
             self.didRehydrateFleetState = false
             try? self.persistence.delete()
             await MainActor.run {
@@ -1255,11 +1257,10 @@ extension CloudSyncEngine {
         guard abandoned.contains(name),
               self.persistenceEnvelope.pendingPredecessorDeletes.removeValue(forKey: name) != nil
         else { return }
-        if self.lastSnapshotHashes[name] == nil,
-           let payload = self.persistenceEnvelope.fleetSnapshots[name],
+        if let payload = self.persistenceEnvelope.fleetSnapshots[name],
            let hash = try? CanonicalSyncJSON.hash(payload)
         {
-            self.lastSnapshotHashes[name] = hash
+            self.skippedTerminalReplacementHashes[name] = hash
         }
     }
 
@@ -1313,6 +1314,9 @@ extension CloudSyncEngine {
             self.requeuePendingSnapshotDeletes()
             for payload in self.pendingSnapshots {
                 let hash = try CanonicalSyncJSON.hash(payload)
+                if self.skippedTerminalReplacementHashes[payload.recordName] == hash {
+                    continue
+                }
                 let predecessors = CloudSyncSnapshotMigration.predecessorNames(
                     for: payload,
                     obsoleteNames: obsoleteNames)
@@ -1343,6 +1347,7 @@ extension CloudSyncEngine {
                 record.encryptedValues["usagePayload"] = try CanonicalSyncJSON.string(payload.usage) as CKRecordValue
                 self.desiredRecords[recordID] = record
                 self.persistenceEnvelope.fleetSnapshots[payload.recordName] = payload
+                self.skippedTerminalReplacementHashes.removeValue(forKey: payload.recordName)
                 engine.state.add(pendingRecordZoneChanges: [.saveRecord(recordID)])
             }
             self.pendingSnapshots = []
