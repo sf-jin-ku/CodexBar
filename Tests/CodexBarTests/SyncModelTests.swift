@@ -534,6 +534,45 @@ struct CloudSyncSnapshotMigrationSaveThenDeleteTests {
     }
 
     @Test
+    func `confirmed save hashes replace the previously stored version`() {
+        var pending = ["snap-a": "hash-new"]
+        var last = ["snap-a": "hash-old", "snap-b": "hash-other"]
+
+        CloudSyncSnapshotMigration.applyConfirmedSaveHashes(
+            savedRecordNames: ["snap-a"],
+            pendingSaveHashes: &pending,
+            lastSnapshotHashes: &last)
+
+        #expect(last["snap-a"] == "hash-new")
+        #expect(last["snap-b"] == "hash-other")
+        #expect(pending.isEmpty)
+    }
+
+    @Test
+    func `terminal save skips apply without a predecessor mapping`() {
+        var pending = ["snap-new": "hash-sent"]
+        var skipped: [String: String] = [:]
+
+        CloudSyncSnapshotMigration.applyTerminalSaveSkip(
+            recordName: "snap-new",
+            error: Self.cloudKitError(.permissionFailure),
+            pendingSaveHashes: &pending,
+            skippedTerminalReplacementHashes: &skipped)
+        #expect(skipped["snap-new"] == "hash-sent")
+        #expect(pending.isEmpty)
+
+        pending = ["snap-new": "hash-sent"]
+        skipped = [:]
+        CloudSyncSnapshotMigration.applyTerminalSaveSkip(
+            recordName: "snap-new",
+            error: Self.cloudKitError(.networkFailure),
+            pendingSaveHashes: &pending,
+            skippedTerminalReplacementHashes: &skipped)
+        #expect(skipped.isEmpty)
+        #expect(pending["snap-new"] == "hash-sent")
+    }
+
+    @Test
     func `delayed delete retries do not resume on a replacement sync engine`() {
         let original = NSObject()
         #expect(

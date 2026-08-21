@@ -295,6 +295,32 @@ enum CloudSyncSnapshotMigration {
         })
     }
 
+    static func applyConfirmedSaveHashes(
+        savedRecordNames: [String],
+        pendingSaveHashes: inout [String: String],
+        lastSnapshotHashes: inout [String: String])
+    {
+        for name in savedRecordNames {
+            guard let hash = pendingSaveHashes.removeValue(forKey: name) else { continue }
+            lastSnapshotHashes[name] = hash
+        }
+    }
+
+    static func applyTerminalSaveSkip(
+        recordName: String,
+        error: CKError,
+        pendingSaveHashes: inout [String: String],
+        skippedTerminalReplacementHashes: inout [String: String])
+    {
+        guard self.retryDelay(for: error) == nil else { return }
+        guard let hash = pendingSaveHashes.removeValue(forKey: recordName) else { return }
+        skippedTerminalReplacementHashes[recordName] = hash
+    }
+
+    static func hasInFlightSave(recordName: String, pendingSaveHashes: [String: String]) -> Bool {
+        pendingSaveHashes[recordName] != nil
+    }
+
     static func shouldResumeDelayedRetry(
         originatingEngine: ObjectIdentifier?,
         currentEngine: ObjectIdentifier?) -> Bool
@@ -339,6 +365,7 @@ actor CloudSyncEngine: CKSyncEngineDelegate {
     private var pendingSnapshots: [AccountSnapshotSyncPayload] = []
     private var lastSnapshotHashes: [String: String] = [:]
     private var skippedTerminalReplacementHashes: [String: String] = [:]
+    private var pendingSaveHashes: [String: String] = [:]
     private var lastKnownProviderConfigs: [ProviderInstanceID: ProviderConfig] = [:]
     private var lastKnownPreferences: SyncedPreferences?
     private var lastKnownIncludeSecrets: Bool?
@@ -1047,6 +1074,7 @@ actor CloudSyncEngine: CKSyncEngineDelegate {
             self.persistenceEnvelope = .init(stateSerialization: nil, encodedSystemFields: [:])
             self.lastSnapshotHashes = [:]
             self.skippedTerminalReplacementHashes = [:]
+            self.pendingSaveHashes = [:]
             self.didRehydrateFleetState = false
             try? self.persistence.delete()
             await MainActor.run {
@@ -1170,13 +1198,10 @@ extension CloudSyncEngine {
         let toDrop = CloudSyncSnapshotMigration.takeDeletes(
             forSavedRecordNames: savedRecordNames,
             pending: &self.persistenceEnvelope.pendingPredecessorDeletes)
-        for name in savedRecordNames {
-            guard self.lastSnapshotHashes[name] == nil,
-                  let payload = self.persistenceEnvelope.fleetSnapshots[name],
-                  let hash = try? CanonicalSyncJSON.hash(payload)
-            else { continue }
-            self.lastSnapshotHashes[name] = hash
-        }
+        CloudSyncSnapshotMigration.applyConfirmedSaveHashes(
+            savedRecordNames: savedRecordNames,
+            pendingSaveHashes: &self.pendingSaveHashes,
+            lastSnapshotHashes: &self.lastSnapshotHashes)
         guard !toDrop.isEmpty else { return }
         let recordIDs = CloudSyncSnapshotMigration.drop(
             toDrop,
@@ -1254,14 +1279,14 @@ extension CloudSyncEngine {
         let abandoned = CloudSyncSnapshotMigration.abandonedReplacementNames(
             failures: [name: failure.error],
             pendingReplacements: Set(self.persistenceEnvelope.pendingPredecessorDeletes.keys))
-        guard abandoned.contains(name),
-              self.persistenceEnvelope.pendingPredecessorDeletes.removeValue(forKey: name) != nil
-        else { return }
-        if let payload = self.persistenceEnvelope.fleetSnapshots[name],
-           let hash = try? CanonicalSyncJSON.hash(payload)
-        {
-            self.skippedTerminalReplacementHashes[name] = hash
+        if abandoned.contains(name) {
+            self.persistenceEnvelope.pendingPredecessorDeletes.removeValue(forKey: name)
         }
+        CloudSyncSnapshotMigration.applyTerminalSaveSkip(
+            recordName: name,
+            error: failure.error,
+            pendingSaveHashes: &self.pendingSaveHashes,
+            skippedTerminalReplacementHashes: &self.skippedTerminalReplacementHashes)
     }
 
     private func scheduleDeleteRetry(recordID: CKRecord.ID, after delay: TimeInterval) {
@@ -1336,6 +1361,13 @@ extension CloudSyncEngine {
                     }
                     continue
                 }
+                if CloudSyncSnapshotMigration.hasInFlightSave(
+                    recordName: payload.recordName,
+                    pendingSaveHashes: self.pendingSaveHashes)
+                {
+                    self.persistenceEnvelope.fleetSnapshots[payload.recordName] = payload
+                    continue
+                }
                 let recordID = self.recordID(named: payload.recordName)
                 let record = self.record(type: .accountSnapshot, id: recordID)
                 record["schemaVersion"] = payload.schemaVersion as CKRecordValue
@@ -1348,6 +1380,7 @@ extension CloudSyncEngine {
                 self.desiredRecords[recordID] = record
                 self.persistenceEnvelope.fleetSnapshots[payload.recordName] = payload
                 self.skippedTerminalReplacementHashes.removeValue(forKey: payload.recordName)
+                self.pendingSaveHashes[payload.recordName] = hash
                 engine.state.add(pendingRecordZoneChanges: [.saveRecord(recordID)])
             }
             self.pendingSnapshots = []
