@@ -573,6 +573,43 @@ struct CloudSyncSnapshotMigrationSaveThenDeleteTests {
     }
 
     @Test
+    func `newer in-flight snapshot payloads stay pending until confirmed`() throws {
+        let older = Self.claudeSnapshot(accountID: "claude-swap:2", email: "owner@example.com")
+        let newer = AccountSnapshotSyncPayload(
+            provider: older.provider,
+            deviceID: older.deviceID,
+            accountKey: older.accountKey,
+            fetchedAt: Date(timeIntervalSince1970: 200),
+            displayLabel: older.displayLabel,
+            usage: UsageSnapshot(
+                primary: nil,
+                secondary: nil,
+                updatedAt: Date(timeIntervalSince1970: 200),
+                identity: older.usage.identity),
+            schemaVersion: older.schemaVersion)
+        let olderHash = try CanonicalSyncJSON.hash(older)
+        let newerHash = try CanonicalSyncJSON.hash(newer)
+        #expect(olderHash != newerHash)
+
+        let merged = CloudSyncSnapshotMigration.mergingPendingSnapshots([], with: [newer])
+        #expect(merged.map(\.recordName) == [newer.recordName])
+
+        var last = [newer.recordName: olderHash]
+        let unpublished = CloudSyncSnapshotMigration.unpublishedFleetSnapshots(
+            savedRecordNames: [newer.recordName],
+            fleetSnapshots: [newer.recordName: newer],
+            lastSnapshotHashes: last)
+        #expect(unpublished.map(\.recordName) == [newer.recordName])
+
+        last[newer.recordName] = newerHash
+        #expect(
+            CloudSyncSnapshotMigration.unpublishedFleetSnapshots(
+                savedRecordNames: [newer.recordName],
+                fleetSnapshots: [newer.recordName: newer],
+                lastSnapshotHashes: last).isEmpty)
+    }
+
+    @Test
     func `delayed delete retries do not resume on a replacement sync engine`() {
         let original = NSObject()
         #expect(

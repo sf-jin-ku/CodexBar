@@ -321,6 +321,40 @@ enum CloudSyncSnapshotMigration {
         pendingSaveHashes[recordName] != nil
     }
 
+    static func mergingPendingSnapshots(
+        _ pending: [AccountSnapshotSyncPayload],
+        with extras: [AccountSnapshotSyncPayload]) -> [AccountSnapshotSyncPayload]
+    {
+        var byName: [String: Int] = [:]
+        var result = pending
+        for (index, payload) in pending.enumerated() {
+            byName[payload.recordName] = index
+        }
+        for payload in extras {
+            if let index = byName[payload.recordName] {
+                result[index] = payload
+            } else {
+                byName[payload.recordName] = result.count
+                result.append(payload)
+            }
+        }
+        return result
+    }
+
+    static func unpublishedFleetSnapshots(
+        savedRecordNames: [String],
+        fleetSnapshots: [String: AccountSnapshotSyncPayload],
+        lastSnapshotHashes: [String: String]) -> [AccountSnapshotSyncPayload]
+    {
+        savedRecordNames.compactMap { name in
+            guard let payload = fleetSnapshots[name],
+                  let hash = try? CanonicalSyncJSON.hash(payload),
+                  lastSnapshotHashes[name] != hash
+            else { return nil }
+            return payload
+        }
+    }
+
     static func shouldResumeDelayedRetry(
         originatingEngine: ObjectIdentifier?,
         currentEngine: ObjectIdentifier?) -> Bool
@@ -432,6 +466,9 @@ actor CloudSyncEngine: CKSyncEngineDelegate {
             try await self.queueDeviceRecord()
             self.startPeriodicFetchTimer()
             self.scheduleFetchChanges(scopedToSyncZone: !initialized)
+            if !self.pendingSnapshots.isEmpty {
+                await self.pushPendingSnapshots()
+            }
         } catch {
             await self.record(error: error)
         }
@@ -771,6 +808,11 @@ actor CloudSyncEngine: CKSyncEngineDelegate {
             if !changes.savedRecords.isEmpty {
                 await MainActor.run { self.state.status.lastSuccessfulPushAt = Date() }
             }
+            if !self.pendingSnapshots.isEmpty {
+                Task { [weak self] in
+                    await self?.pushPendingSnapshots()
+                }
+            }
         case let .fetchedDatabaseChanges(changes):
             if changes.deletions.contains(where: { $0.zoneID == Self.zoneID }) {
                 syncEngine.state.add(pendingDatabaseChanges: [.saveZone(CKRecordZone(zoneID: Self.zoneID))])
@@ -1070,11 +1112,11 @@ actor CloudSyncEngine: CKSyncEngineDelegate {
         self.engine = nil
         self.desiredRecords = [:]
         self.quotaRetryState.reset()
+        self.pendingSaveHashes = [:]
         if clearPersistence {
             self.persistenceEnvelope = .init(stateSerialization: nil, encodedSystemFields: [:])
             self.lastSnapshotHashes = [:]
             self.skippedTerminalReplacementHashes = [:]
-            self.pendingSaveHashes = [:]
             self.didRehydrateFleetState = false
             try? self.persistence.delete()
             await MainActor.run {
@@ -1202,6 +1244,12 @@ extension CloudSyncEngine {
             savedRecordNames: savedRecordNames,
             pendingSaveHashes: &self.pendingSaveHashes,
             lastSnapshotHashes: &self.lastSnapshotHashes)
+        self.pendingSnapshots = CloudSyncSnapshotMigration.mergingPendingSnapshots(
+            self.pendingSnapshots,
+            with: CloudSyncSnapshotMigration.unpublishedFleetSnapshots(
+                savedRecordNames: savedRecordNames,
+                fleetSnapshots: self.persistenceEnvelope.fleetSnapshots,
+                lastSnapshotHashes: self.lastSnapshotHashes))
         guard !toDrop.isEmpty else { return }
         let recordIDs = CloudSyncSnapshotMigration.drop(
             toDrop,
@@ -1337,6 +1385,7 @@ extension CloudSyncEngine {
                         liveNames: Set(self.pendingSnapshots.map(\.recordName))))
             }
             self.requeuePendingSnapshotDeletes()
+            var stillPending: [AccountSnapshotSyncPayload] = []
             for payload in self.pendingSnapshots {
                 let hash = try CanonicalSyncJSON.hash(payload)
                 if self.skippedTerminalReplacementHashes[payload.recordName] == hash {
@@ -1366,6 +1415,7 @@ extension CloudSyncEngine {
                     pendingSaveHashes: self.pendingSaveHashes)
                 {
                     self.persistenceEnvelope.fleetSnapshots[payload.recordName] = payload
+                    stillPending.append(payload)
                     continue
                 }
                 let recordID = self.recordID(named: payload.recordName)
@@ -1383,7 +1433,7 @@ extension CloudSyncEngine {
                 self.pendingSaveHashes[payload.recordName] = hash
                 engine.state.add(pendingRecordZoneChanges: [.saveRecord(recordID)])
             }
-            self.pendingSnapshots = []
+            self.pendingSnapshots = stillPending
             self.lastSnapshotPushAt = Date()
             self.persistEnvelope()
         } catch {
