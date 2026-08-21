@@ -726,6 +726,37 @@ struct CodexConsumerProjectionTests {
         #expect(window?.windowMinutes == 300)
     }
 
+    @Test
+    func `menu bar hides monthly credit when optional credits are off`() {
+        let store = self.makeStore(suite: "CodexConsumerProjectionTests-menu-bar-hidden-monthly")
+        store.settings.showOptionalCreditsAndExtraUsage = false
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let snapshot = UsageSnapshot(
+            primary: nil,
+            secondary: nil,
+            updatedAt: now,
+            identity: ProviderIdentitySnapshot(
+                providerID: .codex,
+                accountEmail: "biz@example.com",
+                accountOrganization: "Team",
+                loginMethod: "business"))
+        store._setSnapshotForTesting(snapshot, provider: .codex)
+        store.credits = CreditsSnapshot(
+            remaining: 0,
+            events: [],
+            updatedAt: now,
+            codexCreditLimit: CodexCreditLimitSnapshot(
+                used: 95,
+                limit: 100,
+                remainingPercent: 5,
+                resetsAt: nil,
+                updatedAt: now))
+
+        let projection = store.codexConsumerProjection(surface: .menuBar, now: now)
+        #expect(projection.visibleRateLanes.isEmpty)
+        #expect(store.codexMenuBarMetricWindow(snapshot: snapshot, now: now) == nil)
+    }
+
     private func makeStore(suite: String) -> UsageStore {
         let defaults = UserDefaults(suiteName: suite)!
         defaults.removePersistentDomain(forName: suite)

@@ -23,10 +23,15 @@ public struct CodexSpendControlsMonthlyUsageResponse: Decodable, Sendable {
     }
 
     public var monthlyLimitMappingFailed: Bool {
+        let mappedLimit = self.effectiveMonthlyLimit?.limit
+        let limitWasUnmappable = self.effectiveMonthlyLimit?.limitWasUnmappable == true
+        if !limitWasUnmappable, (mappedLimit ?? 0) <= 0 {
+            return false
+        }
         if self.effectiveMonthlyLimit?.enforcementModeWasUnmappable == true { return true }
         if self.hasInactiveEnforcement { return false }
-        if self.effectiveMonthlyLimit?.limitWasUnmappable == true { return true }
-        guard self.effectiveMonthlyLimit?.limit ?? 0 > 0 else { return false }
+        if limitWasUnmappable { return true }
+        guard mappedLimit ?? 0 > 0 else { return false }
         return self.currentMonthUsageWasUnmappable
     }
 

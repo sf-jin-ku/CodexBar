@@ -217,6 +217,23 @@ struct CodexSpendControlsMonthlyUsageTests {
     }
 
     @Test
+    func `zero limit confirms absence even with unmappable enforcement`() throws {
+        let zero = try self.decodeMonthlyUsage(
+            #"""
+            {
+              "current_month_usage": 12,
+              "effective_monthly_limit": {
+                "limit": 0,
+                "enforcement_mode": {"mode": "HARD_CAP"}
+              }
+            }
+            """#)
+
+        #expect(zero.codexCreditLimitSnapshot(updatedAt: Date()) == nil)
+        #expect(!zero.monthlyLimitMappingFailed)
+    }
+
+    @Test
     func `monthly usage clamps negative usage and accepts numeric strings`() throws {
         let response = try self.decodeMonthlyUsage(self.monthlyUsageJSON(usage: #""-20""#, limit: #""7000""#))
         let snapshot = try #require(response.codexCreditLimitSnapshot(updatedAt: Date()))

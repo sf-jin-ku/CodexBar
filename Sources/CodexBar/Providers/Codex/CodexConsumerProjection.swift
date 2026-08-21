@@ -223,6 +223,31 @@ struct CodexConsumerProjection {
         let dashboardAttachmentAuthorized: Bool
         let dashboardRequiresLogin: Bool
         let now: Date
+        let showOptionalCreditsAndExtraUsage: Bool
+
+        init(
+            snapshot: UsageSnapshot?,
+            rawUsageError: String?,
+            liveCredits: CreditsSnapshot?,
+            rawCreditsError: String?,
+            liveDashboard: OpenAIDashboardSnapshot?,
+            rawDashboardError: String?,
+            dashboardAttachmentAuthorized: Bool,
+            dashboardRequiresLogin: Bool,
+            now: Date,
+            showOptionalCreditsAndExtraUsage: Bool = true)
+        {
+            self.snapshot = snapshot
+            self.rawUsageError = rawUsageError
+            self.liveCredits = liveCredits
+            self.rawCreditsError = rawCreditsError
+            self.liveDashboard = liveDashboard
+            self.rawDashboardError = rawDashboardError
+            self.dashboardAttachmentAuthorized = dashboardAttachmentAuthorized
+            self.dashboardRequiresLogin = dashboardRequiresLogin
+            self.now = now
+            self.showOptionalCreditsAndExtraUsage = showOptionalCreditsAndExtraUsage
+        }
     }
 
     enum MenuBarFallback {
@@ -435,9 +460,10 @@ struct CodexConsumerProjection {
     {
         switch surface {
         case .menuBar, .overrideCard:
-            context.liveCredits?.codexCreditLimit
+            guard context.showOptionalCreditsAndExtraUsage else { return nil }
+            return context.liveCredits?.codexCreditLimit
         case .liveCard, .widget:
-            nil
+            return nil
         }
     }
 
@@ -648,7 +674,8 @@ extension UsageStore {
             rawDashboardError: self.lastOpenAIDashboardError,
             dashboardAttachmentAuthorized: self.openAIDashboardAttachmentAuthorized,
             dashboardRequiresLogin: self.openAIDashboardRequiresLogin,
-            now: now)
+            now: now,
+            showOptionalCreditsAndExtraUsage: self.settings.showOptionalCreditsAndExtraUsage)
         return CodexConsumerProjection.make(surface: surface, context: context)
     }
 
@@ -666,7 +693,8 @@ extension UsageStore {
             surface: .menuBar,
             snapshotOverride: snapshot,
             now: now)
-        let windows = projection.visibleRateLanes.compactMap {
+        let windows = projection.displayedRateLanes(
+            showOptionalCreditsAndExtraUsage: self.settings.showOptionalCreditsAndExtraUsage).compactMap {
             projection.menuBarSelectableRateWindow(for: $0)
         }
         let first = windows.first
