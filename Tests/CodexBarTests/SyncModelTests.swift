@@ -334,17 +334,19 @@ struct CloudSyncSnapshotMigrationDeleteRetryTests {
             recordID("network"): Self.cloudKitError(.networkFailure),
             recordID("quota"): Self.cloudKitError(.quotaExceeded, retryAfter: 30),
             recordID("lost"): Self.cloudKitError(.serverResponseLost),
+            recordID("temp"): Self.cloudKitError(.accountTemporarilyUnavailable),
         ]
 
         let retryable = Set(CloudSyncSnapshotMigration.retryableFailedDeletes(failures).map(\.recordName))
         let reported = Set(CloudSyncSnapshotMigration.reportableFailedDeletes(failures).map(\.code))
 
-        #expect(retryable == ["network", "quota", "lost"])
+        #expect(retryable == ["network", "quota", "lost", "temp"])
         #expect(reported == [.permissionFailure, .notAuthenticated, .invalidArguments])
         #expect(CloudSyncSnapshotMigration.retryDelay(for: Self.cloudKitError(.unknownItem)) == nil)
         #expect(CloudSyncSnapshotMigration.retryDelay(for: Self.cloudKitError(.networkFailure)) == 1)
         #expect(CloudSyncSnapshotMigration.retryDelay(for: Self.cloudKitError(.quotaExceeded, retryAfter: 30)) == 30)
         #expect(CloudSyncSnapshotMigration.retryDelay(for: Self.cloudKitError(.serverResponseLost)) == 1)
+        #expect(CloudSyncSnapshotMigration.retryDelay(for: Self.cloudKitError(.accountTemporarilyUnavailable)) == 1)
         #expect(CloudSyncSnapshotMigration.retryDelay(for: Self.cloudKitError(.permissionFailure)) == nil)
         #expect(
             CloudSyncSnapshotMigration.finishedFailedDeleteNames(failures) == [

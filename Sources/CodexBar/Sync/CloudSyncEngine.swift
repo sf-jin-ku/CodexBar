@@ -272,7 +272,7 @@ enum CloudSyncSnapshotMigration {
         case .unknownItem, .permissionFailure, .notAuthenticated, .invalidArguments:
             return nil
         case .networkUnavailable, .networkFailure, .serviceUnavailable, .requestRateLimited, .zoneBusy, .quotaExceeded,
-             .serverResponseLost:
+             .serverResponseLost, .accountTemporarilyUnavailable:
             return max(error.retryAfterSeconds ?? 1, 1)
         default:
             guard let retryAfter = error.retryAfterSeconds else { return nil }
@@ -993,9 +993,13 @@ actor CloudSyncEngine: CKSyncEngineDelegate {
         case .quotaExceeded:
             let retry = self.quotaRetryState.nextDelay(serverRetryAfter: failure.error.retryAfterSeconds)
             self.scheduleRetry(recordID: failure.record.recordID, after: retry)
+        case .accountTemporarilyUnavailable:
+            let retry = CloudSyncSnapshotMigration.retryDelay(for: failure.error) ?? 1
+            self.scheduleRetry(recordID: failure.record.recordID, after: retry)
         case .serverRecordChanged:
             guard let server = failure.error.serverRecord else {
                 await self.record(error: failure.error)
+                self.pendingSaveHashes.removeValue(forKey: failure.record.recordID.recordName)
                 return
             }
             await self.resolveConflict(with: server, syncEngine: syncEngine)
@@ -1041,6 +1045,7 @@ actor CloudSyncEngine: CKSyncEngineDelegate {
         guard self.schemaVersion(server) <= CodexBarSyncSchema.currentVersion else {
             syncEngine.state.remove(pendingRecordZoneChanges: [.saveRecord(server.recordID)])
             self.desiredRecords.removeValue(forKey: server.recordID)
+            self.pendingSaveHashes.removeValue(forKey: server.recordID.recordName)
             self.cacheSystemFields(server)
             self.persistEnvelope()
             await MainActor.run { self.state.status.needsAppUpdate = true }
@@ -1062,6 +1067,7 @@ actor CloudSyncEngine: CKSyncEngineDelegate {
         } else {
             syncEngine.state.remove(pendingRecordZoneChanges: [.saveRecord(server.recordID)])
             self.desiredRecords.removeValue(forKey: server.recordID)
+            self.pendingSaveHashes.removeValue(forKey: server.recordID.recordName)
             await self.applyFetchedRecords([server])
         }
     }
