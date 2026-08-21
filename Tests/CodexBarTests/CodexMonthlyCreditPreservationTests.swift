@@ -21,7 +21,7 @@ struct CodexMonthlyCreditPreservationTests {
     }
 
     @Test
-    func `enrichment failure keeps prior credits when incoming has none`() {
+    func `enrichment failure preserves only the monthly limit when incoming has none`() {
         let now = Date()
         let prior = Self.credits(limitUsed: 27, limit: 1000, remaining: 0, at: now)
 
@@ -30,7 +30,11 @@ struct CodexMonthlyCreditPreservationTests {
             prior: prior,
             enrichmentFailed: true)
 
-        #expect(merged == prior)
+        #expect(merged?.remaining == 0)
+        #expect(merged?.events.isEmpty == true)
+        #expect(merged?.codexCreditLimit?.used == 27)
+        #expect(merged?.codexCreditLimit?.limit == 1000)
+        #expect(merged?.updatedAt == prior.codexCreditLimit?.updatedAt)
     }
 
     @Test

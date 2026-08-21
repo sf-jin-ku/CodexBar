@@ -34,7 +34,13 @@ enum CodexMonthlyCreditPreservation {
         guard enrichmentFailed else { return incoming }
         guard let priorLimit = prior?.codexCreditLimit else { return incoming }
         if incoming?.codexCreditLimit != nil { return incoming }
-        guard let incoming else { return prior }
+        guard let incoming else {
+            return CreditsSnapshot(
+                remaining: 0,
+                events: [],
+                updatedAt: priorLimit.updatedAt,
+                codexCreditLimit: priorLimit)
+        }
         return CreditsSnapshot(
             remaining: incoming.remaining,
             events: incoming.events,
