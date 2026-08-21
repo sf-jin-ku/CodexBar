@@ -101,19 +101,24 @@ public struct CodexSpendControlsMonthlyUsageResponse: Decodable, Sendable {
             return (nil, false)
         }
         if let value = try? container.decode(Double.self, forKey: key) {
-            return (value, false)
+            return self.mappedFiniteDouble(value)
         }
         if let value = try? container.decode(Int.self, forKey: key) {
-            return (Double(value), false)
+            return Self.mappedFiniteDouble(Double(value))
         }
         if let value = try? container.decode(String.self, forKey: key) {
             let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
             if let parsed = Double(trimmed) {
-                return (parsed, false)
+                return Self.mappedFiniteDouble(parsed)
             }
             return (nil, true)
         }
         return (nil, true)
+    }
+
+    private static func mappedFiniteDouble(_ value: Double) -> (value: Double?, unmappable: Bool) {
+        guard value.isFinite else { return (nil, true) }
+        return (value, false)
     }
 
     fileprivate static func decodeOptionalStringResult<Key: CodingKey>(

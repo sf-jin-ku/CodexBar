@@ -234,6 +234,17 @@ struct CodexSpendControlsMonthlyUsageTests {
     }
 
     @Test
+    func `non-finite usage and limit strings are mapping failures`() throws {
+        let nanUsage = try self.decodeMonthlyUsage(self.monthlyUsageJSON(usage: #""NaN""#))
+        #expect(nanUsage.codexCreditLimitSnapshot(updatedAt: Date())?.limit == 7000)
+        #expect(nanUsage.monthlyLimitMappingFailed)
+
+        let infiniteLimit = try self.decodeMonthlyUsage(self.monthlyUsageJSON(limit: #""Infinity""#))
+        #expect(infiniteLimit.codexCreditLimitSnapshot(updatedAt: Date()) == nil)
+        #expect(infiniteLimit.monthlyLimitMappingFailed)
+    }
+
+    @Test
     func `monthly usage clamps negative usage and accepts numeric strings`() throws {
         let response = try self.decodeMonthlyUsage(self.monthlyUsageJSON(usage: #""-20""#, limit: #""7000""#))
         let snapshot = try #require(response.codexCreditLimitSnapshot(updatedAt: Date()))
