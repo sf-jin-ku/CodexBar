@@ -302,10 +302,19 @@ extension UsageStore {
     }
 
     func persistPublishedCodexCreditsIntoAccountSnapshotsIfNeeded() {
-        let accountKey = self.lastCreditsSnapshotAccountKey
+        let refreshGuard = self.lastCodexAccountScopedRefreshGuard
+        let accountKey = self.lastCreditsSnapshotAccountKey ?? refreshGuard?.accountKey
         guard let accountKey else { return }
-        let matches = self.codexAccountSnapshots.indices.filter { index in
-            CodexIdentityResolver.normalizeEmail(self.codexAccountSnapshots[index].account.email) == accountKey
+        var matches = self.codexAccountSnapshots.indices.filter { index in
+            Self.codexAccountSnapshot(
+                self.codexAccountSnapshots[index],
+                matchesPublishedCreditsAccountKey: accountKey,
+                refreshGuard: refreshGuard)
+        }
+        if matches.count > 1,
+           let activeID = self.settings.codexVisibleAccountProjection.activeVisibleAccountID
+        {
+            matches = matches.filter { self.codexAccountSnapshots[$0].id == activeID }
         }
         guard matches.count == 1, let index = matches.first else { return }
         let row = self.codexAccountSnapshots[index]
@@ -316,5 +325,22 @@ extension UsageStore {
             sourceLabel: row.sourceLabel,
             credits: self.credits)
         self.codexAccountUsageSnapshotStore?.store(self.codexAccountSnapshots)
+    }
+
+    private static func codexAccountSnapshot(
+        _ row: CodexAccountUsageSnapshot,
+        matchesPublishedCreditsAccountKey accountKey: String,
+        refreshGuard: CodexAccountScopedRefreshGuard?) -> Bool
+    {
+        guard CodexIdentityResolver.normalizeEmail(row.account.email) == accountKey else { return false }
+        guard let refreshGuard else { return true }
+        guard row.account.selectionSource == refreshGuard.source else { return false }
+        switch refreshGuard.identity {
+        case let .providerAccount(id):
+            return CodexOpenAIWorkspaceResolver.normalizeWorkspaceAccountID(row.account.workspaceAccountID)
+                == CodexOpenAIWorkspaceResolver.normalizeWorkspaceAccountID(id)
+        case .emailOnly, .unresolved:
+            return true
+        }
     }
 }

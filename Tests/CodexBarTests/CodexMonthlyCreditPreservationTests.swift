@@ -381,4 +381,67 @@ extension CodexAccountScopedRefreshTests {
         store.persistPublishedCodexCreditsIntoAccountSnapshotsIfNeeded()
         #expect(store.codexAccountSnapshots.first?.credits == nil)
     }
+
+    @Test
+    func `standalone credits persist matches the workspace identity when emails collide`() {
+        let suite = "CodexMonthlyCreditPreservationTests-persist-workspace"
+        let settings = self.makeSettingsStore(suite: suite)
+        settings.refreshFrequency = .manual
+        let store = self.makeUsageStore(settings: settings)
+        let usage = self.codexSnapshot(email: "biz@example.com", usedPercent: 12)
+        let selected = CodexVisibleAccount(
+            id: "live:biz@example.com:acct-biz",
+            email: "biz@example.com",
+            workspaceAccountID: "acct-biz",
+            storedAccountID: nil,
+            selectionSource: .liveSystem,
+            isActive: true,
+            isLive: true,
+            canReauthenticate: false,
+            canRemove: false)
+        let sibling = CodexVisibleAccount(
+            id: "live:biz@example.com:acct-other",
+            email: "biz@example.com",
+            workspaceAccountID: "acct-other",
+            storedAccountID: nil,
+            selectionSource: .liveSystem,
+            isActive: false,
+            isLive: true,
+            canReauthenticate: false,
+            canRemove: false)
+        store.codexAccountSnapshots = [
+            CodexAccountUsageSnapshot(
+                account: selected,
+                snapshot: usage,
+                error: nil,
+                sourceLabel: "api",
+                credits: nil),
+            CodexAccountUsageSnapshot(
+                account: sibling,
+                snapshot: usage,
+                error: nil,
+                sourceLabel: "api",
+                credits: nil),
+        ]
+        store.lastCodexAccountScopedRefreshGuard = CodexAccountScopedRefreshGuard(
+            source: .liveSystem,
+            identity: .providerAccount(id: "acct-biz"),
+            accountKey: "biz@example.com")
+        store.lastCreditsSnapshotAccountKey = "biz@example.com"
+        store.credits = CreditsSnapshot(
+            remaining: 0,
+            events: [],
+            updatedAt: Date(),
+            codexCreditLimit: CodexCreditLimitSnapshot(
+                used: 27,
+                limit: 1000,
+                remainingPercent: 97.3,
+                resetsAt: nil,
+                updatedAt: Date()))
+
+        store.persistPublishedCodexCreditsIntoAccountSnapshotsIfNeeded()
+
+        #expect(store.codexAccountSnapshots.first { $0.id == selected.id }?.credits?.codexCreditLimit?.limit == 1000)
+        #expect(store.codexAccountSnapshots.first { $0.id == sibling.id }?.credits == nil)
+    }
 }
