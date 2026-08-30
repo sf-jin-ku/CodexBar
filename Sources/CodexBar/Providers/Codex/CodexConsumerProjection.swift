@@ -265,6 +265,7 @@ struct CodexConsumerProjection {
     let canShowBuyCredits: Bool
     let hasUsageBreakdown: Bool
     let hasCreditsHistory: Bool
+    let extraUsageCost: ProviderCostSnapshot?
 
     private let rateWindowsByLane: [RateLane: RateWindow]
     private let codeReviewRemainingPercent: Double?
@@ -282,6 +283,9 @@ struct CodexConsumerProjection {
         let visibleRateLanes = self.visibleRateLanes(from: rateWindowsByLane, snapshot: context.snapshot)
         let planUtilizationLanes = self.planUtilizationLanes(from: rateWindowsByLane)
 
+        let extraUsageCost = context.showOptionalCreditsAndExtraUsage
+            ? CodexExtraUsageCost.providerCost(from: context.liveCredits)
+            : nil
         let creditsProjection: CreditsProjection? = if allowsLiveAdjuncts,
                                                        context.liveCredits != nil || context.rawCreditsError != nil
         {
@@ -330,6 +334,7 @@ struct CodexConsumerProjection {
             canShowBuyCredits: canShowBuyCredits,
             hasUsageBreakdown: hasUsageBreakdown,
             hasCreditsHistory: hasCreditsHistory,
+            extraUsageCost: extraUsageCost,
             rateWindowsByLane: rateWindowsByLane,
             codeReviewRemainingPercent: dashboardVisibility == .attached ? dashboard?.codeReviewRemainingPercent : nil,
             codeReviewLimit: dashboardVisibility == .attached ? dashboard?.codeReviewLimit : nil,
@@ -704,7 +709,15 @@ extension UsageStore {
         case .secondary, .tertiary:
             return second ?? first
         case .extraUsage:
-            return first
+            return projection.extraUsageCost.flatMap { cost in
+                guard cost.limit > 0 else { return nil }
+                let usedPercent = max(0, min(100, (cost.used / cost.limit) * 100))
+                return RateWindow(
+                    usedPercent: usedPercent,
+                    windowMinutes: nil,
+                    resetsAt: cost.resetsAt,
+                    resetDescription: nil)
+            } ?? first
         case .average:
             guard self.settings.menuBarMetricSupportsAverage(for: .codex),
                   let primary = first,
