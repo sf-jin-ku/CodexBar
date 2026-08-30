@@ -107,7 +107,9 @@ struct CodexPATFetchStrategy: ProviderFetchStrategy {
                     ? .unknown
                     : .exact
             return Self.patResult(
-                usage: reconciled.toUsageSnapshot().withDataConfidence(dataConfidence),
+                usage: CodexExtraUsageCost.attaching(
+                    to: reconciled.toUsageSnapshot().withDataConfidence(dataConfidence),
+                    credits: credits),
                 credits: credits)
         }
 
@@ -116,12 +118,14 @@ struct CodexPATFetchStrategy: ProviderFetchStrategy {
         }
 
         return Self.patResult(
-            usage: UsageSnapshot(
-                primary: nil,
-                secondary: nil,
-                tertiary: nil,
-                updatedAt: updatedAt,
-                identity: CodexReconciledState.patIdentity(response: usageResponse, whoami: whoami)),
+            usage: CodexExtraUsageCost.attaching(
+                to: UsageSnapshot(
+                    primary: nil,
+                    secondary: nil,
+                    tertiary: nil,
+                    updatedAt: updatedAt,
+                    identity: CodexReconciledState.patIdentity(response: usageResponse, whoami: whoami)),
+                credits: credits),
             credits: credits)
     }
 

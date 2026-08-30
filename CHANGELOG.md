@@ -3,6 +3,7 @@
 ## 0.56.2 — Unreleased
 
 ### Fixed
+- Codex: show Extra usage used versus limit for per-member extra credits, including a distinct purchased remaining balance, matching Claude extra usage and Cursor on-demand.
 - OpenCode Go: omit misleading pace and run-out advice for locally estimated quotas while preserving percentages, resets, and cost history (partial fix for #3286). Thanks @Akagilnc!
 
 ## 0.56.1 — 2026-08-30
