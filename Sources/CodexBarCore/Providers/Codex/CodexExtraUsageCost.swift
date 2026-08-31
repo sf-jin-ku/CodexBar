@@ -19,7 +19,9 @@ public enum CodexExtraUsageCost {
                 period: limit.title,
                 resetsAt: limit.resetsAt,
                 balance: extraBalance,
-                updatedAt: credits.updatedAt)
+                // The cap ages on its own: a preserved limit rides along with a newer balance fetch,
+                // so stamping it with `credits.updatedAt` would overstate how fresh the cap is.
+                updatedAt: limit.updatedAt)
         }
         guard let extraBalance else { return nil }
         return ProviderCostSnapshot(

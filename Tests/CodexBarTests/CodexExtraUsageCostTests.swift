@@ -139,6 +139,34 @@ struct CodexExtraUsageCostTests {
     }
 
     @Test
+    func `the monthly cap ages by its own timestamp, not the balance refresh`() throws {
+        let capFetchedAt = Date(timeIntervalSince1970: 1_780_000_000)
+        // CodexMonthlyCreditPreservation.merging pairs a fresh balance fetch with a preserved older cap.
+        let preserved = CreditsSnapshot(
+            remaining: 50,
+            events: [],
+            updatedAt: capFetchedAt.addingTimeInterval(7200),
+            codexCreditLimit: CodexCreditLimitSnapshot(
+                used: 300,
+                limit: 400,
+                remainingPercent: 25,
+                resetsAt: nil,
+                updatedAt: capFetchedAt))
+
+        let live = try #require(CodexExtraUsageCost.providerCost(from: preserved))
+        #expect(live.updatedAt == capFetchedAt)
+
+        let resolved = try #require(CodexExtraUsageCost.resolving(
+            live: live,
+            attached: ProviderCostSnapshot(
+                used: 380,
+                limit: 400,
+                currencyCode: CodexExtraUsageCost.currencyCode,
+                updatedAt: capFetchedAt.addingTimeInterval(3600))))
+        #expect(resolved.used == 380)
+    }
+
+    @Test
     func `resolving keeps each side when the other is missing or foreign`() throws {
         let now = Date(timeIntervalSince1970: 1_780_000_000)
         let live = try #require(CodexExtraUsageCost.providerCost(
