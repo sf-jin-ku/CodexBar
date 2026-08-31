@@ -285,7 +285,7 @@ struct CodexConsumerProjection {
 
         let extraUsageCost = context.showOptionalCreditsAndExtraUsage
             ? CodexExtraUsageCost.resolving(
-                live: CodexExtraUsageCost.providerCost(from: context.liveCredits),
+                liveCredits: context.liveCredits,
                 attached: context.snapshot?.providerCost)
             : nil
         let creditsProjection: CreditsProjection? = if allowsLiveAdjuncts,
