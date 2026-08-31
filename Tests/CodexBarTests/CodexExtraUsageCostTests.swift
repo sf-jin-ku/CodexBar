@@ -104,10 +104,10 @@ struct CodexExtraUsageCostTests {
     }
 
     @Test
-    func `live monthly cap is preferred over the attached cost`() throws {
+    func `the fresher cap wins when both sides carry one`() throws {
         let now = Date(timeIntervalSince1970: 1_780_000_000)
-        let live = try #require(CodexExtraUsageCost.providerCost(from: CreditsSnapshot(
-            remaining: 0,
+        let liveCredits = CreditsSnapshot(
+            remaining: 50,
             events: [],
             updatedAt: now,
             codexCreditLimit: CodexCreditLimitSnapshot(
@@ -115,15 +115,27 @@ struct CodexExtraUsageCostTests {
                 limit: 400,
                 remainingPercent: 25,
                 resetsAt: nil,
-                updatedAt: now))))
+                updatedAt: now))
+        let live = try #require(CodexExtraUsageCost.providerCost(from: liveCredits))
         let attached = ProviderCostSnapshot(
             used: 120,
             limit: 400,
             currencyCode: CodexExtraUsageCost.currencyCode,
             updatedAt: now.addingTimeInterval(-3600))
 
-        let resolved = try #require(CodexExtraUsageCost.resolving(live: live, attached: attached))
-        #expect(resolved.used == 300)
+        let olderAttached = try #require(CodexExtraUsageCost.resolving(live: live, attached: attached))
+        #expect(olderAttached.used == 300)
+
+        // A dashboard that refreshed after the retained credits is the authoritative cap.
+        let newerAttached = try #require(CodexExtraUsageCost.resolving(
+            live: live,
+            attached: ProviderCostSnapshot(
+                used: 380,
+                limit: 400,
+                currencyCode: CodexExtraUsageCost.currencyCode,
+                updatedAt: now.addingTimeInterval(3600))))
+        #expect(newerAttached.used == 380)
+        #expect(newerAttached.balance == 50)
     }
 
     @Test

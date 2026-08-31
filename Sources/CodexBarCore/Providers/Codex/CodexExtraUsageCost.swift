@@ -37,21 +37,24 @@ public enum CodexExtraUsageCost {
     }
 
     /// An authorized dashboard attaches its monthly cap to the paired usage snapshot without overwriting
-    /// already-known credits, so the live credits can carry only a purchased balance. Keep the cap from
-    /// whichever side has one, and the purchased balance from the live side.
+    /// already-known credits, so either side can hold the cap and either side can be the stale one.
+    /// Take the fresher cap, keeping a purchased balance the winning side does not carry itself.
     public static func resolving(
         live: ProviderCostSnapshot?,
         attached: ProviderCostSnapshot?) -> ProviderCostSnapshot?
     {
         guard let live else { return attached }
-        guard live.limit <= 0,
-              let attached,
+        // Provider-specific by design: only a Codex credits cost may supply the Codex monthly cap.
+        guard let attached,
               attached.currencyCode == Self.currencyCode,
               attached.limit > 0
         else {
             return live
         }
-        return attached.replacing(balance: live.balance ?? attached.balance)
+        if live.limit > 0, live.updatedAt >= attached.updatedAt {
+            return live
+        }
+        return attached.replacing(balance: attached.balance ?? live.balance)
     }
 
     /// Purchased extra credits that are distinct from the monthly included/assigned cap.
