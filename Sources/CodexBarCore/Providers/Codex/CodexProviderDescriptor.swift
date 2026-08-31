@@ -104,10 +104,21 @@ public enum CodexProviderDescriptor {
                     return ProviderIdentityPresentation(badge: display, plan: display)
                 },
                 costPresenter: { snapshot in
-                    guard snapshot.providerCost?.currencyCode == CodexExtraUsageCost.currencyCode else {
+                    guard let cost = snapshot.providerCost,
+                          cost.currencyCode == CodexExtraUsageCost.currencyCode
+                    else {
                         return ProviderCostPresentation()
                     }
-                    return ProviderCostPresentation(menuCardStyle: .creditsUsage)
+                    let balances = cost.balance.map {
+                        [ProviderCostPresentation.Balance(
+                            label: "Extra usage balance",
+                            amount: $0,
+                            currencyCode: cost.currencyCode)]
+                    } ?? []
+                    return ProviderCostPresentation(
+                        showsGenericFallback: !(cost.used == 0 && cost.limit == 0 && cost.balance != nil),
+                        balances: balances,
+                        menuCardStyle: .creditsUsage)
                 },
                 creditResolver: { $0.codexCreditLimit?.remaining ?? $0.remaining },
                 iconWindowResolver: self.iconWindows,

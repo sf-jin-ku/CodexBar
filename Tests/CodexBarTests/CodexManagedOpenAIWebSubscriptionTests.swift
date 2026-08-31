@@ -48,6 +48,8 @@ extension CodexManagedOpenAIWebTests {
         store.lastCodexAccountScopedRefreshGuard = publicationGuard
 
         let renewal = Date(timeIntervalSince1970: 1_787_236_207)
+        let creditReset = Date(timeIntervalSince1970: 1_789_000_000)
+        let dashboardUpdatedAt = Date(timeIntervalSince1970: 1_788_000_000)
         await store.applyOpenAIDashboard(
             OpenAIDashboardSnapshot(
                 signedInEmail: managedAccount.email,
@@ -57,9 +59,15 @@ extension CodexManagedOpenAIWebTests {
                 usageBreakdown: [],
                 creditsPurchaseURL: nil,
                 creditsRemaining: 10,
+                codexCreditLimit: CodexCreditLimitSnapshot(
+                    used: 125,
+                    limit: 500,
+                    remainingPercent: 75,
+                    resetsAt: creditReset,
+                    updatedAt: dashboardUpdatedAt),
                 accountPlan: "Pro",
                 subscriptionRenewsAt: renewal,
-                updatedAt: Date()),
+                updatedAt: dashboardUpdatedAt),
             targetEmail: managedAccount.email)
 
         let mergedUsage = try #require(store.snapshots[.codex])
@@ -71,6 +79,10 @@ extension CodexManagedOpenAIWebTests {
         #expect(mergedUsage.identity?.loginMethod == existingUsage.identity?.loginMethod)
         #expect(mergedUsage.subscriptionRenewsAt == renewal)
         #expect(mergedUsage.subscriptionExpiresAt == nil)
+        #expect(mergedUsage.providerCost?.used == 125)
+        #expect(mergedUsage.providerCost?.limit == 500)
+        #expect(mergedUsage.providerCost?.resetsAt == creditReset)
+        #expect(mergedUsage.providerCost?.currencyCode == CodexExtraUsageCost.currencyCode)
         #expect(store.lastSourceLabels[.codex] == "codex-cli")
 
         let refreshedUsage = UsageSnapshot(
