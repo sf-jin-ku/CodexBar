@@ -65,10 +65,18 @@ The grok.com billing gRPC-web endpoint remains a best-effort fallback.
      credits period and plan metadata, with the proxy's authoritative reset taking
      precedence over a conflicting gRPC timestamp. When grok.com has no percent
      either, or the retry fails, usage stays unknown and the card reports an explicit
-     unavailable-usage diagnostic — an absent value is never reported as 0%.
-     Only a percentage that grok.com actually put on the wire is adopted: that
-     parser reports its own no-usage-yet frame (a period with no percentage field)
-     as 0, and promoting that reading would recreate the fabricated 0%. The retry
+     unavailable-usage diagnostic.
+     Two grok.com readings are adopted: a percentage it actually put on the wire,
+     and its own no-usage-yet frame — a live period carrying no percentage field
+     anywhere, which that parser reports as 0. The percentage is a proto3 scalar, so
+     a period whose usage is exactly zero cannot publish one, and refusing that
+     reading left every freshly reset period without a usage bar. The adopted zero
+     keeps its not-wire-published marker as it travels, and any other inferred value
+     is still refused. The credits proxy never produces an inferred value — it
+     returns unknown usage instead — so an absent `creditUsagePercent` is still
+     never reported as 0% on its own. Note that the provider protocol omits an
+     exact zero and a withheld percentage identically, so this reading is an
+     inference from frame shape rather than a value the surface stated. The retry
      also runs under a 6-second budget, because period-only payloads recur on every
      refresh and a grok.com outage must not delay the credits answer already in hand.
    - Plan name does not come from the credits payload. After a successful
@@ -109,8 +117,9 @@ The grok.com billing gRPC-web endpoint remains a best-effort fallback.
    - Parses the returned protobuf enough to recover used percent and
      reset timestamp, accepting both gRPC-web frames and the raw protobuf form
      returned by some successful requests. A current billing period with an
-     omitted proto3 `credit_usage_percent` is treated as zero usage. This keeps
-     billing visible when `grok agent stdio` returns `Method not found`.
+     omitted proto3 `credit_usage_percent` is treated as zero usage, and the
+     unknown-usage retry above adopts that reading. This keeps billing visible when
+     `grok agent stdio` returns `Method not found`.
 5) **Local session signals** (informational fallback)
    - Walks `~/.grok/sessions/<encoded-cwd>/<session-id>/signals.json` files (last 30 days).
    - Aggregates `totalTokensBeforeCompaction`, `contextTokensUsed`, `modelsUsed`,
@@ -135,7 +144,9 @@ The grok.com billing gRPC-web endpoint remains a best-effort fallback.
   grok.com Cookie header when Chrome Safe Storage is denied. Auto still imports
   Chrome only.
 - Credits `subscriptionTier` maps SuperGrok vs SuperGrok Heavy on the plan badge.
-  SuperGrok Heavy with no `creditUsagePercent` is unknown usage, not 0%.
+  SuperGrok Heavy with no `creditUsagePercent` is unknown usage from that payload,
+  not 0%; the grok.com retry above can still supply a percent, including its
+  no-usage-yet zero.
 - Each OAuth fetch captures credentials once for billing, bearer retries, identity,
   and settings enrichment. Replacing `auth.json` during an awaited request cannot
   relabel the result with the new account. Cookie usage stays separate from this

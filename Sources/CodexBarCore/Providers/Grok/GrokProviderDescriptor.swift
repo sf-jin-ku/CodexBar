@@ -289,12 +289,18 @@ struct GrokOAuthFetchStrategy: ProviderFetchStrategy {
     /// grok.com remains best-effort — when it also has no percent, the proxy's period and plan
     /// metadata are kept with usage still unknown.
     ///
-    /// Two properties keep the enrichment from costing more than it adds. Only a wire-published
-    /// percent is adopted, because the grok.com parser reports its own no-usage-yet frame as 0
-    /// without any percentage on the wire and promoting that would rebuild the fabricated 0%
-    /// #3157 removed. And the request runs under a short deadline: period-only payloads recur on
-    /// every refresh for affected plans, so a grok.com outage must not hold back a proxy snapshot
-    /// that is already valid for the caller's remaining fields.
+    /// Two properties keep the enrichment from costing more than it adds. A percent is adopted
+    /// only when grok.com published it on the wire, or when the surface reported its own
+    /// no-usage-yet frame: the percentage is a proto3 scalar, so a period whose usage is exactly
+    /// zero omits it entirely, and the parser only reads that shape as 0 when the frame still
+    /// carries a live period and no percentage anywhere (`GrokWebBillingFetcher`). Refusing that
+    /// zero left every freshly reset period showing "usage unavailable" until the first request
+    /// landed. It travels with `usedPercentIsWirePublished` still false so no consumer mistakes
+    /// it for a published reading, and any other inferred value is still refused — the fabricated
+    /// 0% #3157 removed came from the credits proxy, which has no such frame evidence. And the
+    /// request runs under a short deadline: period-only payloads recur on every refresh for
+    /// affected plans, so a grok.com outage must not hold back a proxy snapshot that is already
+    /// valid for the caller's remaining fields.
     static let unknownUsageEnrichmentBudget: Duration = .seconds(6)
 
     static func resolvingUnknownUsage(
@@ -315,7 +321,9 @@ struct GrokOAuthFetchStrategy: ProviderFetchStrategy {
         let join = BoundedTaskJoin(sourceTask: Task { try await grpcBilling(credentials) })
         switch await join.value(joinGrace: budget) {
         case let .value(grpcSnapshot):
-            guard grpcSnapshot.usedPercent != nil, grpcSnapshot.usedPercentIsWirePublished else {
+            guard let percent = grpcSnapshot.usedPercent,
+                  grpcSnapshot.usedPercentIsWirePublished || percent == 0
+            else {
                 return proxyAnswer
             }
             return (grpcSnapshot.completing(with: proxySnapshot), "grok-web", true)
