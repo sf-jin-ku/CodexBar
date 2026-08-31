@@ -54,14 +54,15 @@ public enum CodexExtraUsageCost {
         else {
             return live
         }
-        // A credits fetch is never older than the cap it carries, so a live cap that wins on freshness
-        // brings a balance that is at least as fresh as the attached one — return it whole.
-        if live.limit > 0, live.updatedAt >= attached.updatedAt {
-            return live
-        }
+        // The balance is decided once, by its own freshness, and rides whichever cap wins. A missing balance
+        // is not a reading that the purchased credits are gone: preservation stands a cap up beside a
+        // `remaining: 0` placeholder when the credits fetch fails, so the other side still gets to supply it.
         let balance = liveCredits.updatedAt >= attached.updatedAt
             ? live.balance ?? attached.balance
             : attached.balance ?? live.balance
+        if live.limit > 0, live.updatedAt >= attached.updatedAt {
+            return live.replacing(balance: balance)
+        }
         return attached.replacing(balance: balance)
     }
 

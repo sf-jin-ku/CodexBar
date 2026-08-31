@@ -200,6 +200,33 @@ struct CodexExtraUsageCostTests {
     }
 
     @Test
+    func `a winning live cap still takes the attached balance when its own credits fetch failed`() throws {
+        let now = Date(timeIntervalSince1970: 1_780_000_000)
+        // CodexMonthlyCreditPreservation.merging stands a preserved cap up beside a `remaining: 0`
+        // placeholder when the credits fetch fails, so the missing balance is unread, not spent.
+        let placeholder = CreditsSnapshot(
+            remaining: 0,
+            events: [],
+            updatedAt: now,
+            codexCreditLimit: CodexCreditLimitSnapshot(
+                used: 300,
+                limit: 400,
+                remainingPercent: 25,
+                resetsAt: nil,
+                updatedAt: now))
+        let dashboard = ProviderCostSnapshot(
+            used: 120,
+            limit: 400,
+            currencyCode: CodexExtraUsageCost.currencyCode,
+            balance: 30,
+            updatedAt: now.addingTimeInterval(-3600))
+
+        let resolved = try #require(CodexExtraUsageCost.resolving(liveCredits: placeholder, attached: dashboard))
+        #expect(resolved.used == 300)
+        #expect(resolved.balance == 30)
+    }
+
+    @Test
     func `resolving keeps each side when the other is missing or foreign`() throws {
         let now = Date(timeIntervalSince1970: 1_780_000_000)
         let liveCredits = CreditsSnapshot(remaining: 14.5, events: [], updatedAt: now)
