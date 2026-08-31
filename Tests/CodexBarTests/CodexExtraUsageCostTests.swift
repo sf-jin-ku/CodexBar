@@ -84,6 +84,63 @@ struct CodexExtraUsageCostTests {
     }
 
     @Test
+    func `attached monthly cap wins over balance-only live credits`() throws {
+        let now = Date(timeIntervalSince1970: 1_780_000_000)
+        let live = try #require(CodexExtraUsageCost.providerCost(
+            from: CreditsSnapshot(remaining: 14.5, events: [], updatedAt: now)))
+        let attached = ProviderCostSnapshot(
+            used: 120,
+            limit: 400,
+            currencyCode: CodexExtraUsageCost.currencyCode,
+            period: "Monthly credit limit",
+            resetsAt: Date(timeIntervalSince1970: 1_788_220_800),
+            updatedAt: now)
+
+        let resolved = try #require(CodexExtraUsageCost.resolving(live: live, attached: attached))
+        #expect(resolved.used == 120)
+        #expect(resolved.limit == 400)
+        #expect(resolved.resetsAt == Date(timeIntervalSince1970: 1_788_220_800))
+        #expect(resolved.balance == 14.5)
+    }
+
+    @Test
+    func `live monthly cap is preferred over the attached cost`() throws {
+        let now = Date(timeIntervalSince1970: 1_780_000_000)
+        let live = try #require(CodexExtraUsageCost.providerCost(from: CreditsSnapshot(
+            remaining: 0,
+            events: [],
+            updatedAt: now,
+            codexCreditLimit: CodexCreditLimitSnapshot(
+                used: 300,
+                limit: 400,
+                remainingPercent: 25,
+                resetsAt: nil,
+                updatedAt: now))))
+        let attached = ProviderCostSnapshot(
+            used: 120,
+            limit: 400,
+            currencyCode: CodexExtraUsageCost.currencyCode,
+            updatedAt: now.addingTimeInterval(-3600))
+
+        let resolved = try #require(CodexExtraUsageCost.resolving(live: live, attached: attached))
+        #expect(resolved.used == 300)
+    }
+
+    @Test
+    func `resolving keeps each side when the other is missing or foreign`() throws {
+        let now = Date(timeIntervalSince1970: 1_780_000_000)
+        let live = try #require(CodexExtraUsageCost.providerCost(
+            from: CreditsSnapshot(remaining: 14.5, events: [], updatedAt: now)))
+        let foreign = ProviderCostSnapshot(used: 4, limit: 50, currencyCode: "USD", updatedAt: now)
+
+        #expect(CodexExtraUsageCost.resolving(live: nil, attached: foreign) == foreign)
+        #expect(CodexExtraUsageCost.resolving(live: nil, attached: nil) == nil)
+        #expect(CodexExtraUsageCost.resolving(live: live, attached: nil) == live)
+        // Provider-specific by design: a non-credits cost never supplies the Codex monthly cap.
+        #expect(CodexExtraUsageCost.resolving(live: live, attached: foreign) == live)
+    }
+
+    @Test
     func `oauth credits-only result attaches extra usage`() throws {
         let json = """
         {

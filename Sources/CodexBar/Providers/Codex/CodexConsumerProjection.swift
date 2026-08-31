@@ -284,7 +284,9 @@ struct CodexConsumerProjection {
         let planUtilizationLanes = self.planUtilizationLanes(from: rateWindowsByLane)
 
         let extraUsageCost = context.showOptionalCreditsAndExtraUsage
-            ? CodexExtraUsageCost.providerCost(from: context.liveCredits)
+            ? CodexExtraUsageCost.resolving(
+                live: CodexExtraUsageCost.providerCost(from: context.liveCredits),
+                attached: context.snapshot?.providerCost)
             : nil
         let creditsProjection: CreditsProjection? = if allowsLiveAdjuncts,
                                                        context.liveCredits != nil || context.rawCreditsError != nil
