@@ -501,7 +501,7 @@ struct GrokCreditsProxyFetcherTests {
     }
 
     @Test
-    func `an inferred grok dot com zero restores the bar without claiming a published percent`() async throws {
+    func `an unclassified grok dot com zero leaves usage unknown`() async throws {
         let reset = Date(timeIntervalSince1970: 1_800_000_003)
         let result = try await GrokOAuthFetchStrategy.resolvingUnknownUsage(
             GrokWebBillingSnapshot(
@@ -510,28 +510,16 @@ struct GrokCreditsProxyFetcherTests {
                 subscriptionTier: "SuperGrok Heavy"),
             credentials: Self.credentials,
             grpcBilling: { _ in
-                // The shape grok.com returns when its frame carries no percentage field at all,
-                // which is what a period reports until its first request lands.
                 GrokWebBillingSnapshot(
                     usedPercent: 0,
-                    resetsAt: nil,
+                    resetsAt: reset,
                     usedPercentIsWirePublished: false)
             })
 
-        #expect(result.snapshot.usedPercent == 0)
-        #expect(!result.snapshot.usedPercentIsWirePublished)
+        #expect(result.snapshot.usedPercent == nil)
         #expect(result.snapshot.resetsAt == reset)
         #expect(result.snapshot.subscriptionTier == "SuperGrok Heavy")
-        #expect(result.sourceLabel == "grok-web")
-
-        let usage = GrokUsageSnapshot(
-            billing: nil,
-            webBilling: result.snapshot,
-            credentials: Self.credentials,
-            localSummary: nil,
-            cliVersion: nil,
-            updatedAt: Date(timeIntervalSince1970: 1_799_000_000))
-        #expect(usage.toUsageSnapshot().primary?.usedPercent == 0)
+        #expect(result.sourceLabel == "grok-cli-proxy")
     }
 
     @Test

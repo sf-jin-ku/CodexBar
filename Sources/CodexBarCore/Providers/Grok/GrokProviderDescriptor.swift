@@ -289,18 +289,9 @@ struct GrokOAuthFetchStrategy: ProviderFetchStrategy {
     /// grok.com remains best-effort — when it also has no percent, the proxy's period and plan
     /// metadata are kept with usage still unknown.
     ///
-    /// Two properties keep the enrichment from costing more than it adds. A percent is adopted
-    /// only when grok.com published it on the wire, or when the surface reported its own
-    /// no-usage-yet frame: the percentage is a proto3 scalar, so a period whose usage is exactly
-    /// zero omits it entirely, and the parser only reads that shape as 0 when the frame still
-    /// carries a live period and no percentage anywhere (`GrokWebBillingFetcher`). Refusing that
-    /// zero left every freshly reset period showing "usage unavailable" until the first request
-    /// landed. It travels with `usedPercentIsWirePublished` still false so no consumer mistakes
-    /// it for a published reading, and any other inferred value is still refused — the fabricated
-    /// 0% #3157 removed came from the credits proxy, which has no such frame evidence. And the
-    /// request runs under a short deadline: period-only payloads recur on every refresh for
-    /// affected plans, so a grok.com outage must not hold back a proxy snapshot that is already
-    /// valid for the caller's remaining fields.
+    /// Only published percentages and parser-validated implicit zeroes can enrich the proxy.
+    /// A bare inferred zero is insufficient: the parser must validate an active current period.
+    /// The short deadline keeps a grok.com outage from delaying already-valid proxy metadata.
     static let unknownUsageEnrichmentBudget: Duration = .seconds(6)
 
     static func resolvingUnknownUsage(
@@ -322,7 +313,7 @@ struct GrokOAuthFetchStrategy: ProviderFetchStrategy {
         switch await join.value(joinGrace: budget) {
         case let .value(grpcSnapshot):
             guard let percent = grpcSnapshot.usedPercent,
-                  grpcSnapshot.usedPercentIsWirePublished || percent == 0
+                  grpcSnapshot.usedPercentIsWirePublished || (percent == 0 && grpcSnapshot.usedPercentIsImplicitZero)
             else {
                 return proxyAnswer
             }

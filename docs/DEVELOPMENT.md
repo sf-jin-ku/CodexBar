@@ -141,7 +141,16 @@ finishes (`waitid` with `WNOWAIT`), preventing reuse of its PID/session. Observe
 leaders can establish ownership of orphaned session members only while a matching live or unreaped
 birth identity still anchors that session. Known descendants retain their identities after reparenting;
 empty completed sessions retire. If an observed session loses its anchor while unaccounted live members
-remain, cleanup fails without adopting or signaling those uncertain PIDs. Unavailable metadata for a
+remain, observation may retain that session as pending only while the direct command is still wait-owned
+and running. A nested runner can then finish draining its own child: its unreaped wait handle is not
+signal authority for the outer observer, and macOS may hide the exited leader's metadata. Pending members
+remain birth-checked even if they change sessions. Uncertainty also follows observed descendants and peers
+of a live matching pending session leader, with compatible birth ordering; those identities remain pending
+after reparenting or session migration. Unreadable pending metadata fails closed; confirmed exits or replaced
+pending births retire without claiming replacements. Pending status grants no ownership or signal authority.
+Command exit and every cleanup path require session continuity and fail if uncertainty remains; a detected
+replacement session-leader birth still fails immediately, even during observation.
+No observation or cleanup deadline is extended. Unavailable metadata for a
 known identity also fails cleanup; an unreadable unrelated peer does not abort enumeration.
 For the direct child, confirmed metadata absence (ESRCH/ENOENT) can precede a waitable exit on
 Darwin. Its unreaped wait handle retains ownership while ordinary polling continues within the
@@ -173,9 +182,14 @@ files and self-expiry, with final cleanup restricted to their unreaped direct ch
 
 Process-cleanup fixtures keep ancestry alive until the real ownership refresh observes matching ready
 child identities (and the session-tree grandchild), then acknowledges a private fixture gate before drain.
-The direct `waitid` fixture uses the same handshake without reaping its root. Immediate cases and a controlled
-one-second readiness delay retain the two-second command budget; startup no longer adds a fixed 1.2-second
-ancestry sleep. Gate waits are bounded and stop-file aware; helper self-expiry remains 20 seconds.
+The direct `waitid` fixture uses the same handshake without reaping its root. Success/failure fixtures keep
+their five-second command budget; timeout fixtures keep two seconds. A virtual-clock readiness test proves
+one-second startup adds no fixed ancestry sleep. Gate waits are bounded and stop-file aware; helper
+self-expiry remains 20 seconds.
+The nested failure regression gates the inner drain and controls outer snapshots: the outer observer
+sees a live session leader first, then its previously unseen orphan with the exited leader hidden.
+Only the inner wait owner drains that orphan; the outer runner must complete without claiming it.
+Contract tests also require unresolved sessions to fail at cleanup and reject reused leader births.
 
 Cost performance and fair-scheduling corpora use exclusive initial fixture creation: the scanner only
 reads after setup has closed each file. This avoids per-file atomic publication and durability work
@@ -225,12 +239,31 @@ refresh cadence, scan budgets, timestamp parsing and incremental-order validatio
 Claude/Vertex metadata classification searches decoded ASCII strings with case-folded bytes, keeping
 the original Foundation lowercase/substring predicate for non-ASCII or noncontiguous strings. Check
 the whole string for ASCII before matching; combining characters after a marker can affect the old
-predicate. The recursive dictionary/array walk still visits the same content, but no longer repeats
-root/message metadata subtrees already visited through the root. `CostUsageClaudeVertexClassifierTests`
-compares with the frozen old predicate and checks complete filtered rows, daily tokens/costs, and reports,
-including decoded JSON escapes, Unicode boundaries, nested arrays, and false/numeric metadata flags.
-Claude-only source files are excluded from the Codex parser hash, so this optimization does not
-invalidate native Codex caches or change predecessor adoption.
+predicate. The recursive dictionary/array walk visits dictionaries inside arrays without recursing into nested arrays.
+`CostUsageClaudeVertexClassifierTests` compares with the frozen old predicate and checks complete filtered
+rows, persisted daily tokens/costs, and reports, including decoded JSON escapes, Unicode boundaries,
+nested arrays, and false/numeric metadata flags.
+
+`ClaudeJSONObject` shares a shallow decoded-container view between field extraction and classification;
+the parser reuses its message view for primary detection and usage extraction. On Darwin, ASCII-keyed
+objects retain immutable Foundation containers and use scoped CF bulk access and type dispatch. Only
+JSONSerialization results and their decoded descendants enter that path; arbitrary objects and coerced
+entries use Swift casts. CF bridging is Darwin-only, and retained owners outlive all borrowed pointers
+and temporary allocations.
+Empty containers require no pointer arithmetic. Unicode-keyed objects use the actual conditional
+`[String: Any]` coercion at each object boundary, preserving canonical-key collapse and whole-object
+mixed-key rejection. The walker visits only the resolved entries. Independent coercions can choose
+different collision winners, so tests assert resolved-entry behavior rather than a deterministic winner.
+Linux uses the same view and walker with portable Swift coercions, with no CF bridging or separate
+pricing path. `ClaudeJSONObjectTests` also belongs to the portable CLI/core test target.
+
+Claude parsing returns only rows and parsed bytes. The scan owns reconciliation across streaming chunks,
+parent files and subagents, then builds persisted days from the stored row model; there is no discarded
+parser-day aggregation or second normalization. Daily tests exercise the real cache/report boundary.
+Removing the unused field in the shared scanner changes the generated native parser hash, while Codex
+semantics remain unchanged. Published `494eee446bb2e5f9` is a tested compatible predecessor; existing
+predecessors and store receipt logic remain intact. Pi/OMP pricing keys include this hash and therefore
+reparse once under the existing invalidation contract, also tested with and without a catalog.
 
 A second optimized synthetic check against main `354191af9` used three fresh-cache scans per provider
 with 32–128 KiB text bodies. Median CPU decreased by 3–18% across Claude/Vertex cases (the 3% case is
@@ -240,7 +273,7 @@ matched, including the existing unset public request counts. Fixture generation 
 wall time was recorded separately under host load. These results do not measure idle-app CPU.
 
 Claude and Vertex scans share one synchronous invocation-owned pricing resolver across full/append file
-parsing, row/day normalization, and report repricing. It lazily snapshots the catalog, including an empty
+parsing, row normalization, and report repricing. It lazily snapshots the catalog, including an empty
 sentinel for unavailable artifacts, at the existing changed-file and nonempty-report preparation points.
 An exact report memo hit and an empty inventory with no rows do not load it. The internal standalone
 parser now owns one snapshot per parse, optionally supplied explicitly; the cancellable parser takes
