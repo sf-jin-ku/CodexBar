@@ -46,7 +46,8 @@ public enum CodexExtraUsageCost {
         liveCredits: CreditsSnapshot?,
         attached: ProviderCostSnapshot?) -> ProviderCostSnapshot?
     {
-        guard let liveCredits, let live = self.providerCost(from: liveCredits) else { return attached }
+        let live = liveCredits.flatMap { self.providerCost(from: $0) }
+        guard let liveCredits else { return attached }
         // Provider-specific by design: only a Codex credits cost may supply the Codex monthly cap.
         guard let attached,
               attached.currencyCode == Self.currencyCode,
@@ -54,13 +55,21 @@ public enum CodexExtraUsageCost {
         else {
             return live
         }
-        // The balance is decided once, by its own freshness, and rides whichever cap wins. A missing balance
-        // is not a reading that the purchased credits are gone: preservation stands a cap up beside a
-        // `remaining: 0` placeholder when the credits fetch fails, so the other side still gets to supply it.
-        let balance = liveCredits.updatedAt >= attached.updatedAt
-            ? live.balance ?? attached.balance
-            : attached.balance ?? live.balance
-        if live.limit > 0, live.updatedAt >= attached.updatedAt {
+        // A successful live balance reading, including remaining == 0, is a confirmed value and must
+        // not keep an older attached purchased-credit balance. A failed credits fetch is encoded as
+        // `balanceReadSucceeded == false` so the other side can still supply it.
+        let liveBalance = self.purchasedExtraCreditsBalance(from: liveCredits)
+        let balance: Double?
+        if liveCredits.updatedAt >= attached.updatedAt {
+            if liveCredits.balanceReadSucceeded {
+                balance = liveBalance
+            } else {
+                balance = liveBalance ?? attached.balance
+            }
+        } else {
+            balance = attached.balance ?? liveBalance
+        }
+        if let live, live.limit > 0, live.updatedAt >= attached.updatedAt {
             return live.replacing(balance: balance)
         }
         return attached.replacing(balance: balance)

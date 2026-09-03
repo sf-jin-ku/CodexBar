@@ -213,7 +213,8 @@ struct CodexExtraUsageCostTests {
                 limit: 400,
                 remainingPercent: 25,
                 resetsAt: nil,
-                updatedAt: now))
+                updatedAt: now),
+            balanceReadSucceeded: false)
         let dashboard = ProviderCostSnapshot(
             used: 120,
             limit: 400,
@@ -224,6 +225,47 @@ struct CodexExtraUsageCostTests {
         let resolved = try #require(CodexExtraUsageCost.resolving(liveCredits: placeholder, attached: dashboard))
         #expect(resolved.used == 300)
         #expect(resolved.balance == 30)
+    }
+
+    @Test
+    func `a newer successful zero purchased-credit balance clears an older attached balance`() throws {
+        let now = Date(timeIntervalSince1970: 1_780_000_000)
+        let liveCredits = CreditsSnapshot(
+            remaining: 0,
+            events: [],
+            updatedAt: now,
+            codexCreditLimit: CodexCreditLimitSnapshot(
+                used: 300,
+                limit: 400,
+                remainingPercent: 25,
+                resetsAt: nil,
+                updatedAt: now))
+        let dashboard = ProviderCostSnapshot(
+            used: 120,
+            limit: 400,
+            currencyCode: CodexExtraUsageCost.currencyCode,
+            balance: 30,
+            updatedAt: now.addingTimeInterval(-3600))
+
+        let resolved = try #require(CodexExtraUsageCost.resolving(liveCredits: liveCredits, attached: dashboard))
+        #expect(resolved.used == 300)
+        #expect(resolved.balance == nil)
+    }
+
+    @Test
+    func `legacy credits snapshots treat a missing balance-read flag as succeeded`() throws {
+        let original = CreditsSnapshot(
+            remaining: 14.5,
+            events: [],
+            updatedAt: Date(timeIntervalSince1970: 1_780_000_000))
+        var object = try #require(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(original)) as? [String: Any])
+        object.removeValue(forKey: "balanceReadSucceeded")
+        let decoded = try JSONDecoder().decode(
+            CreditsSnapshot.self,
+            from: JSONSerialization.data(withJSONObject: object))
+        #expect(decoded.remaining == 14.5)
+        #expect(decoded.balanceReadSucceeded)
     }
 
     @Test

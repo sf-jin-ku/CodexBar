@@ -44,7 +44,8 @@ enum CodexMonthlyCreditPreservation {
                 remaining: 0,
                 events: [],
                 updatedAt: priorLimit.updatedAt,
-                codexCreditLimit: priorLimit)
+                codexCreditLimit: priorLimit,
+                balanceReadSucceeded: false)
         }
         return CreditsSnapshot(
             remaining: incoming.remaining,
