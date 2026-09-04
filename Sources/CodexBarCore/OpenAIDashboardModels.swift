@@ -161,7 +161,9 @@ extension OpenAIDashboardSnapshot {
             remaining: self.creditsRemaining ?? 0,
             events: self.creditEvents,
             updatedAt: self.updatedAt,
-            codexCreditLimit: self.codexCreditLimit)
+            codexCreditLimit: self.codexCreditLimit,
+            // A cap-only dashboard read omits the balance entirely; that placeholder zero is unread, not spent.
+            balanceReadSucceeded: self.creditsRemaining != nil)
     }
 }
 

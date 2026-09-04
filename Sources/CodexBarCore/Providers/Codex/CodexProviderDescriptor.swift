@@ -519,7 +519,9 @@ struct CodexOAuthFetchStrategy: ProviderFetchStrategy {
             remaining: balance ?? 0,
             events: [],
             updatedAt: updatedAt,
-            codexCreditLimit: creditLimit)
+            codexCreditLimit: creditLimit,
+            // A cap-only response omits the balance entirely; that placeholder zero is unread, not spent.
+            balanceReadSucceeded: balance != nil)
     }
 
     private static func attachingExtraUsage(
@@ -652,7 +654,8 @@ struct CodexOAuthFetchStrategy: ProviderFetchStrategy {
                 remaining: oauthCredits.remaining,
                 events: oauthCredits.events,
                 updatedAt: oauthCredits.updatedAt,
-                codexCreditLimit: cliLimit))
+                codexCreditLimit: cliLimit,
+                balanceReadSucceeded: oauthCredits.balanceReadSucceeded))
     }
 
     private static func applyingSpendControlsMonthlyLimit(
@@ -701,12 +704,15 @@ struct CodexOAuthFetchStrategy: ProviderFetchStrategy {
                     remaining: $0.remaining,
                     events: $0.events,
                     updatedAt: $0.updatedAt,
-                    codexCreditLimit: limit)
+                    codexCreditLimit: limit,
+                    balanceReadSucceeded: $0.balanceReadSucceeded)
             } ?? CreditsSnapshot(
                 remaining: 0,
                 events: [],
                 updatedAt: updatedAt,
-                codexCreditLimit: limit)
+                codexCreditLimit: limit,
+                // Spend controls supply only the cap, so this snapshot carries no balance reading.
+                balanceReadSucceeded: false)
             return Self.replacingCredits(in: result, with: credits)
         } catch {
             if error is CancellationError || Task.isCancelled {

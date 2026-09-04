@@ -140,7 +140,9 @@ struct CodexPATFetchStrategy: ProviderFetchStrategy {
             remaining: balance ?? 0,
             events: [],
             updatedAt: updatedAt,
-            codexCreditLimit: creditLimit)
+            codexCreditLimit: creditLimit,
+            // A cap-only response omits the balance entirely; that placeholder zero is unread, not spent.
+            balanceReadSucceeded: balance != nil)
     }
 
     private static func patResult(usage: UsageSnapshot, credits: CreditsSnapshot?)

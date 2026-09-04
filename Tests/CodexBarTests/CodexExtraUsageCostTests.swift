@@ -253,6 +253,94 @@ struct CodexExtraUsageCostTests {
     }
 
     @Test
+    func `a cap-only dashboard read leaves the purchased balance unread`() throws {
+        let now = Date(timeIntervalSince1970: 1_780_000_000)
+        // The dashboard exposes the balance as an optional field, so a cap-only read omits it entirely.
+        let capOnly = Self.dashboard(creditsRemaining: nil, at: now)
+        let capOnlyCredits = try #require(capOnly.toCreditsSnapshot())
+        #expect(capOnlyCredits.remaining == 0)
+        #expect(capOnlyCredits.balanceReadSucceeded == false)
+
+        let attached = ProviderCostSnapshot(
+            used: 120,
+            limit: 400,
+            currencyCode: CodexExtraUsageCost.currencyCode,
+            balance: 30,
+            updatedAt: now.addingTimeInterval(-3600))
+        let preserved = try #require(
+            CodexExtraUsageCost.resolving(liveCredits: capOnlyCredits, attached: attached))
+        #expect(preserved.balance == 30)
+
+        // An explicitly reported zero is a confirmed reading and clears the older attached balance.
+        let confirmedZero = try #require(Self.dashboard(creditsRemaining: 0, at: now).toCreditsSnapshot())
+        #expect(confirmedZero.balanceReadSucceeded)
+        let cleared = try #require(
+            CodexExtraUsageCost.resolving(liveCredits: confirmedZero, attached: attached))
+        #expect(cleared.balance == nil)
+    }
+
+    @Test
+    func `a cap-only oauth response leaves the purchased balance unread`() throws {
+        // The monthly cap arrives without a `balance` field, so the mapper's `remaining: 0` is a
+        // placeholder rather than a reading that the purchased credits are gone.
+        let capOnly = try Self.oauthCredits(balanceJSON: nil)
+        #expect(capOnly.remaining == 0)
+        #expect(capOnly.balanceReadSucceeded == false)
+
+        let explicitZero = try Self.oauthCredits(balanceJSON: "\"0\"")
+        #expect(explicitZero.remaining == 0)
+        #expect(explicitZero.balanceReadSucceeded)
+    }
+
+    private static func oauthCredits(balanceJSON: String?) throws -> CreditsSnapshot {
+        let balanceEntry = balanceJSON.map { ",\n            \"balance\": \($0)" } ?? ""
+        let json = """
+        {
+          "rate_limit": {
+            "primary_window": null,
+            "secondary_window": null,
+            "individual_limit": {
+              "limit": 100000,
+              "used": 7761,
+              "remaining_percent": 92.239,
+              "resets_at": 1782864000
+            }
+          },
+          "credits": {
+            "has_credits": true,
+            "unlimited": false\(balanceEntry)
+          }
+        }
+        """
+        let creds = CodexOAuthCredentials(
+            accessToken: "access",
+            refreshToken: "refresh",
+            idToken: nil,
+            accountId: nil,
+            lastRefresh: Date())
+        let result = try CodexOAuthFetchStrategy._mapResultForTesting(Data(json.utf8), credentials: creds)
+        return try #require(result.credits)
+    }
+
+    private static func dashboard(creditsRemaining: Double?, at date: Date) -> OpenAIDashboardSnapshot {
+        OpenAIDashboardSnapshot(
+            signedInEmail: nil,
+            codeReviewRemainingPercent: nil,
+            creditEvents: [],
+            dailyBreakdown: [],
+            usageBreakdown: [],
+            creditsPurchaseURL: nil,
+            creditsRemaining: creditsRemaining,
+            codexCreditLimit: CodexCreditLimitSnapshot(
+                used: 300,
+                limit: 400,
+                remainingPercent: 25,
+                resetsAt: nil,
+                updatedAt: date),
+            updatedAt: date)
+    }
+
+    @Test
     func `legacy credits snapshots treat a missing balance-read flag as succeeded`() throws {
         let original = CreditsSnapshot(
             remaining: 14.5,
