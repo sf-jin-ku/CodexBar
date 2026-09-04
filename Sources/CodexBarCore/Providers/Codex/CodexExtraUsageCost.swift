@@ -59,15 +59,13 @@ public enum CodexExtraUsageCost {
         // not keep an older attached purchased-credit balance. A failed credits fetch is encoded as
         // `balanceReadSucceeded == false` so the other side can still supply it.
         let liveBalance = self.purchasedExtraCreditsBalance(from: liveCredits)
-        let balance: Double?
-        if liveCredits.updatedAt >= attached.updatedAt {
-            if liveCredits.balanceReadSucceeded {
-                balance = liveBalance
-            } else {
-                balance = liveBalance ?? attached.balance
-            }
+        let liveBalanceIsFresher = liveCredits.updatedAt >= attached.updatedAt
+        let balance: Double? = if liveBalanceIsFresher, liveCredits.balanceReadSucceeded {
+            liveBalance
+        } else if liveBalanceIsFresher {
+            liveBalance ?? attached.balance
         } else {
-            balance = attached.balance ?? liveBalance
+            attached.balance ?? liveBalance
         }
         if let live, live.limit > 0, live.updatedAt >= attached.updatedAt {
             return live.replacing(balance: balance)
