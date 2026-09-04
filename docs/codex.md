@@ -186,7 +186,7 @@ is limited, using additional rows when needed.
 4) Last imported browser cookie email (cached).
 
 ## Credits
-- Web dashboard fills credits only when OAuth/CLI do not provide them.
+- Web dashboard fills credits only when OAuth/CLI do not provide them. Account-matched extra usage reconciles monthly caps and purchased balances separately: a newer confirmed zero clears an old balance, while an unread balance preserves the last successful reading. Extra usage shows monthly spend/limit and a distinct purchased balance when available; the optional credits setting controls visibility.
 - CLI RPC: `account/rateLimits/read` → credits balance.
 - CLI PTY diagnostics can still parse `Credits:` from saved/manual `/status` output.
 

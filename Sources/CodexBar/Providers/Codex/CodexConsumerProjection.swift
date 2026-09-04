@@ -292,7 +292,8 @@ struct CodexConsumerProjection {
                                                        context.liveCredits != nil || context.rawCreditsError != nil
         {
             CreditsProjection(
-                snapshot: context.liveCredits,
+                snapshot: CodexExtraUsageCost.creditsForDisplay(
+                    context.liveCredits, attached: context.snapshot?.providerCost),
                 userFacingError: CodexUIErrorMapper.userFacingMessage(context.rawCreditsError))
         } else {
             nil
@@ -468,7 +469,20 @@ struct CodexConsumerProjection {
         switch surface {
         case .menuBar, .overrideCard:
             guard context.showOptionalCreditsAndExtraUsage else { return nil }
-            return context.liveCredits?.codexCreditLimit
+            let live = context.liveCredits?.codexCreditLimit
+            guard let cost = CodexExtraUsageCost.resolving(
+                liveCredits: context.liveCredits, attached: context.snapshot?.providerCost),
+                cost.currencyCode == CodexExtraUsageCost.currencyCode, cost.limit > 0
+            else { return live }
+            if let live, live.updatedAt >= cost.updatedAt {
+                return live
+            }
+            return CodexCreditLimitSnapshot(
+                used: cost.used,
+                limit: cost.limit,
+                remainingPercent: max(0, 100 - cost.used / cost.limit * 100),
+                resetsAt: cost.resetsAt,
+                updatedAt: cost.updatedAt)
         case .liveCard, .widget:
             return nil
         }

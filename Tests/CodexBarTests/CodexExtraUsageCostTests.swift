@@ -77,9 +77,10 @@ struct CodexExtraUsageCostTests {
     }
 
     @Test
-    func `zero remaining without a monthly cap is absent`() {
+    func `zero remaining without a monthly cap retains the successful reading`() {
         let credits = CreditsSnapshot(remaining: 0, events: [], updatedAt: Date())
-        #expect(CodexExtraUsageCost.providerCost(from: credits) == nil)
+        #expect(CodexExtraUsageCost.providerCost(from: credits)?.balanceUpdatedAt == credits.updatedAt)
+        #expect(CodexExtraUsageCost.providerCost(from: credits)?.balance == nil)
         #expect(CodexExtraUsageCost.providerCost(from: nil) == nil)
     }
 

@@ -116,7 +116,7 @@ public enum CodexProviderDescriptor {
                             currencyCode: cost.currencyCode)]
                     } ?? []
                     return ProviderCostPresentation(
-                        showsGenericFallback: !(cost.used == 0 && cost.limit == 0 && cost.balance != nil),
+                        showsGenericFallback: !(cost.used == 0 && cost.limit == 0),
                         balances: balances,
                         menuCardStyle: .creditsUsage)
                 },

@@ -52,7 +52,7 @@ extension UsageMenuCardView.Model {
                 id = "monthly"
                 paceDetail = nil
             }
-            let monthlyDetail = Self.codexMonthlyCreditDetail(lane: lane, input: input)
+            let monthlyDetail = Self.codexMonthlyCreditDetail(lane: lane, window: window, input: input)
             let workdayMarkerPercents: [Double] = if lane == .weekly, input.workdayTickAppearance != .hidden {
                 workDayMarkerPercents(
                     workDays: input.workDaysPerWeek,
@@ -84,8 +84,10 @@ extension UsageMenuCardView.Model {
         }
     }
 
-    private static func codexMonthlyCreditDetail(lane: CodexConsumerProjection.RateLane, input: Input) -> String? {
-        guard lane == .monthly else { return nil }
+    private static func codexMonthlyCreditDetail(
+        lane: CodexConsumerProjection.RateLane, window: RateWindow, input: Input) -> String?
+    {
+        guard lane == .monthly, window.windowMinutes == nil else { return nil }
         let cost = input.codexProjection?.extraUsageCost ?? CodexExtraUsageCost.providerCost(from: input.credits)
         guard let cost, cost.limit > 0 else { return nil }
         let used = UsageFormatter.creditsNumberString(from: cost.used)

@@ -427,4 +427,19 @@ struct CLIOutputTests {
         #expect(text.contains("Extra usage balance: 100.0"))
         #expect(!text.contains("Cost: 0.0 / 0.0"))
     }
+
+    @Test
+    func `confirmed zero Codex credits never print zero cost or an old balance`() {
+        let now = Date(timeIntervalSince1970: 0)
+        let snapshot = CodexExtraUsageCost.attaching(
+            to: UsageSnapshot(primary: nil, secondary: nil, updatedAt: now),
+            credits: CreditsSnapshot(remaining: 0, events: [], updatedAt: now))
+        let text = CLIRenderer.renderText(
+            provider: .codex,
+            snapshot: snapshot,
+            credits: nil,
+            context: RenderContext(header: "Codex (oauth)", status: nil, useColor: false, resetStyle: .countdown))
+        #expect(!text.contains("Extra usage balance"))
+        #expect(!text.contains("Cost:"))
+    }
 }

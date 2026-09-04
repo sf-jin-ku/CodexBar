@@ -677,6 +677,18 @@ struct MenuDescriptor {
         {
             return true
         }
+        // CLI quota reads can succeed without identity. Retained history or failed refreshes do not prove this.
+        if target == .claude,
+           snapshot?.hasRateLimitWindows == true,
+           store.error(for: .claude) == nil,
+           store.lastSourceLabels[.claude] == "claude",
+           let attempt = store.fetchAttempts(for: .claude).last,
+           attempt.kind == .cli,
+           attempt.wasAvailable,
+           attempt.errorDescription == nil
+        {
+            return true
+        }
         let metadata = store.metadata(for: target)
         if metadata.usesAccountFallback,
            let fallback = account.email?.trimmingCharacters(in: .whitespacesAndNewlines),

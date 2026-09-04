@@ -2176,12 +2176,16 @@ struct ProviderArchitectureGatekeeperTests {
             line: 667,
             anchor: "let target = provider ?? store.enabledFirstPartyProviders().first ?? .codex",
             expectedProviderIDs: ["claude", "codex"],
-            expectedReferenceCount: 4,
-            expectedReferenceFingerprint: ["codex@0", "codex@4", "claude@11", "claude@12"],
-            reason: "This exact shared renderer maps provider-owned presentation data into the generic UI model."),
+            expectedReferenceCount: 9,
+            expectedReferenceFingerprint: [
+                "codex@0", "codex@4", "claude@11", "claude@12", "claude@18", "claude@20", "claude@21", "claude@21",
+                "claude@22",
+            ],
+            reason: "Claude account actions accept proven CLI quota success without inventing identity; " +
+                "Codex retains its default-provider fallback."),
         AllowedProviderConstruct(
             path: "Sources/CodexBar/MenuDescriptor.swift",
-            line: 695,
+            line: 707,
             anchor: "if provider == .factory, snapshot.tertiary != nil {",
             expectedProviderIDs: ["alibabatokenplan", "amp", "codex", "crof", "doubao", "factory", "grok", "sub2api"],
             expectedReferenceCount: 11,
@@ -2201,7 +2205,7 @@ struct ProviderArchitectureGatekeeperTests {
             reason: "This exact shared renderer maps provider-owned presentation data into the generic UI model."),
         AllowedProviderConstruct(
             path: "Sources/CodexBar/MenuDescriptor.swift",
-            line: 770,
+            line: 782,
             anchor: "let cleaned = if provider == .codex {",
             expectedProviderIDs: ["codex"],
             expectedReferenceCount: 1,
