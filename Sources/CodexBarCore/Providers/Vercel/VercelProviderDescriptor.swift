@@ -9,7 +9,9 @@ public enum VercelProviderDescriptor {
                 [VercelCLIFetchStrategy()]
             case .auto where SettingsValue.cleaned(context.env["VERCEL_TEAM_ID"]) != nil:
                 [VercelCLIFetchStrategy()]
-            case .auto, .api:
+            case .auto:
+                [VercelCLIFetchStrategy(), Self.spec.makeStrategy()]
+            case .api:
                 [Self.spec.makeStrategy()]
             case .web, .oauth:
                 []
@@ -40,7 +42,6 @@ public enum VercelProviderDescriptor {
             field: .init(
                 id: "vercel-team-id",
                 title: "Team ID",
-                subtitle: "Optional. Set a team ID to show your personal budget using 'vercel login'. "
-                    + "No extra token required.",
+                subtitle: "Uses the CLI's current team by default. Refresh to choose another team.",
                 placeholder: nil)))
 }

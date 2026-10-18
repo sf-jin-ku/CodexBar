@@ -164,6 +164,8 @@ final class UsageStore {
     var codexAccountSnapshots: [CodexAccountUsageSnapshot] = []
     var codexSettingsRefreshingAccountIDs: Set<String> = []
     var kiloScopeSnapshots: [KiloScopeSnapshot] = []
+    var vercelTeams: [VercelCLITeam] = []
+    var vercelTeamsRefreshing = false
     var claudeSwapAccountSnapshots: [ProviderAccountUsageSnapshot] = []
     var claudeSwapLastRefreshAt: Date?
     var claudeSwapLastError: String?

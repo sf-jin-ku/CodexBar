@@ -1,20 +1,31 @@
 import Foundation
 
-struct VercelCLIUsageFetcher: Sendable {
+public struct VercelCLIUsageFetcher: Sendable {
     var run: @Sendable ([String], [String: String]) async throws -> String = Self.runCommand
 
+    public init() {}
+
+    init(run: @escaping @Sendable ([String], [String: String]) async throws -> String) {
+        self.run = run
+    }
+
     func fetch(environment: [String: String], now: Date = Date()) async throws -> UsageSnapshot {
-        guard let teamID = SettingsValue.cleaned(environment["VERCEL_TEAM_ID"]),
-              teamID.range(of: #"^team_[A-Za-z0-9]+$"#, options: .regularExpression) != nil
-        else {
+        let teamID: String
+        if let configured = SettingsValue.cleaned(environment["VERCEL_TEAM_ID"]) {
+            guard Self.isTeamID(configured) else { throw Self.invalidOutput }
+            teamID = configured
+        } else if let current = try await self.teams(environment: environment).first(where: \.current) {
+            teamID = current.id
+        } else {
             throw ProviderFetchClassifiedError(
-                kind: .missingCredential, message: "Set a Vercel team ID (team_...) to read your personal budget.")
+                kind: .missingCredential,
+                message: "Select a Vercel team in CodexBar or run 'vercel teams switch' to choose your CLI team.")
         }
         let user: UserResponse = try await self.read("/v2/user", teamID: teamID, environment: environment)
         guard !user.user.id.isEmpty else { throw Self.invalidOutput }
+        // limit과 cursor를 생략하면 API가 해당 scope의 전체 예산을 반환한다.
         let response: BudgetResponse = try await self.read(
             "/ai-gateway/budgets/list?teamId=\(teamID)&scopeType=user", teamID: teamID, environment: environment)
-        guard response.nextCursor == nil else { throw Self.invalidOutput }
         let matches = response.budgets.filter {
             $0.scopeType == "user" && $0.scopeId == user.user.id && $0.active && !$0.archived
         }
@@ -71,15 +82,50 @@ struct VercelCLIUsageFetcher: Sendable {
             dataConfidence: .exact)
     }
 
+    public func teams(environment: [String: String]) async throws -> [VercelCLITeam] {
+        var teams: [VercelCLITeam] = []
+        var ids: Set<String> = []
+        var cursor: Int?
+        var cursors: Set<Int> = []
+        // ponytail: 최대 20페이지까지 읽는다. 더 큰 계정은 전체 조회 시간 제한으로 전환한다.
+        for _ in 0..<20 {
+            var arguments = ["teams", "list", "--format", "json", "--non-interactive"]
+            if let cursor { arguments += ["--next", String(cursor)] }
+            let page: TeamsResponse = try await self.command(arguments, environment: environment)
+            for team in page.teams where team.id.hasPrefix("team_") {
+                guard Self.isTeamID(team.id), !team.name.isEmpty, !team.slug.isEmpty,
+                      ids.insert(team.id).inserted
+                else { throw Self.invalidOutput }
+                teams.append(team)
+            }
+            cursor = page.pagination?.next
+            guard let next = cursor else {
+                guard teams.filter(\.current).count <= 1 else { throw Self.invalidOutput }
+                return teams
+            }
+            guard next >= 0, cursors.insert(next).inserted else { throw Self.invalidOutput }
+        }
+        throw Self.invalidOutput
+    }
+
+    private static func isTeamID(_ value: String) -> Bool {
+        value.range(of: #"^team_[A-Za-z0-9]+$"#, options: .regularExpression) != nil
+    }
+
     private func read<Value: Decodable>(
         _ endpoint: String, teamID: String, environment: [String: String]) async throws -> Value
     {
+        // CLI의 기본 팀이 URL의 teamId를 덮어쓰므로 호출 범위도 같은 팀으로 고정한다.
+        try await self.command(
+            ["api", endpoint, "--raw", "--non-interactive", "--scope", teamID], environment: environment)
+    }
+
+    private func command<Value: Decodable>(
+        _ arguments: [String], environment: [String: String]) async throws -> Value
+    {
         let output: String
         do {
-            // CLI의 기본 팀이 URL의 teamId를 덮어쓰므로 호출 범위도 같은 팀으로 고정한다.
-            output = try await self.run(
-                ["api", endpoint, "--raw", "--non-interactive", "--scope", teamID],
-                Self.commandEnvironment(environment))
+            output = try await self.run(arguments, Self.commandEnvironment(environment))
         } catch is CancellationError {
             throw CancellationError()
         } catch SubprocessRunnerError.binaryNotFound {
@@ -100,7 +146,7 @@ struct VercelCLIUsageFetcher: Sendable {
     }
 
     private static let invalidOutput = ProviderFetchClassifiedError(
-        kind: .parseFailure, message: "Vercel CLI returned an unrecognized personal budget response.")
+        kind: .parseFailure, message: "Vercel CLI returned an unrecognized usage or team response.")
 
     private static func runCommand(_ arguments: [String], environment: [String: String]) async throws -> String {
         let path = PathBuilder.effectivePATH(
@@ -149,7 +195,14 @@ struct VercelCLIUsageFetcher: Sendable {
 
     private struct BudgetResponse: Decodable {
         let budgets: [Budget]
-        let nextCursor: String?
+    }
+
+    private struct TeamsResponse: Decodable {
+        let teams: [VercelCLITeam]
+        let pagination: Pagination?
+        struct Pagination: Decodable {
+            let next: Int?
+        }
     }
 
     private struct Budget: Decodable {
@@ -188,5 +241,15 @@ struct VercelCLIFetchStrategy: ProviderFetchStrategy {
             usage: VercelCLIUsageFetcher().fetch(environment: context.env), sourceLabel: "cli")
     }
 
-    func shouldFallback(on _: Error, context _: ProviderFetchContext) -> Bool { false }
+    func shouldFallback(on error: Error, context: ProviderFetchContext) -> Bool {
+        context.sourceMode == .auto && SettingsValue.cleaned(context.env["VERCEL_TEAM_ID"]) == nil
+            && !(error is CancellationError)
+    }
+}
+
+public struct VercelCLITeam: Decodable, Sendable, Equatable, Identifiable {
+    public let id: String
+    public let slug: String
+    public let name: String
+    public let current: Bool
 }

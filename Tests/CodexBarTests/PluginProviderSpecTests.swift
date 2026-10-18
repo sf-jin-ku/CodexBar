@@ -142,8 +142,9 @@ struct PluginProviderSpecTests {
             let descriptor = ProviderDescriptorRegistry.descriptor(for: provider)
             let context = ProviderCutoverTestSupport.context(environment: [key: " 'fixture-key' "])
             let strategies = await descriptor.fetchPlan.pipeline.resolveStrategies(context)
-            #expect(strategies.map(\.id) == ["\(provider.rawValue).js"])
-            let strategy = try #require(strategies.first)
+            #expect(strategies.map(\.id) == (provider == .vercel
+                    ? ["vercel.cli", "vercel.js"] : ["\(provider.rawValue).js"]))
+            let strategy = try #require(strategies.last)
             #expect(await strategy.isAvailable(context))
             #expect(await !strategy.isAvailable(ProviderCutoverTestSupport.context(
                 environment: ["OTHER_API_KEY": "fixture-key"])))

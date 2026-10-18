@@ -12,18 +12,29 @@ Use `codexbar usage --provider vercel --source api` to fetch it.
 
 ## Personal budget with Vercel CLI
 
-No additional access token needs to be copied into CodexBar. Install Vercel CLI and sign in with
-`vercel login`, then enter the target **Team ID** (`team_...`) in the provider's settings. In automatic
-mode, setting a team ID selects the personal-budget source instead of the API-key balance source.
-Leave it blank to keep the existing API-key behavior. The Gateway API key is not required for CLI budgets.
+No additional access token or team ID needs to be copied into CodexBar. Install Vercel CLI and sign in
+with `vercel login`. Automatic mode discovers the CLI's current team and reads your personal budget.
+The Gateway API key is not required for CLI budgets.
 
-For the CodexBar CLI, set `VERCEL_TEAM_ID` and use `codexbar usage --provider vercel --source cli`.
-Explicit `--source api` always reads the Gateway key's team credits, even when a team ID is configured.
+To use another team, open Settings → Providers → Vercel AI Gateway, click **Refresh** beside **Team**,
+and choose a team by name. The choice is saved only in CodexBar; it does not switch the CLI's global
+team. Choose **Auto** to follow the CLI's current team again. **Usage source** also lets you select
+**Vercel CLI** explicitly, or **API key** to keep the original team-credit view.
+
+For the CodexBar CLI, use `codexbar usage --provider vercel --source cli`; no team ID is needed when
+the Vercel CLI already has a current team. `VERCEL_TEAM_ID` remains an optional explicit override.
+Explicit `--source api` always reads the Gateway key's team credits, even with a team override.
 
 CodexBar runs read-only `vercel api` commands with JSON output:
 
+- `vercel teams list --format json` discovers memberships and the current CLI team. Pagination is
+  followed for up to 20 pages; incomplete, repeated, or ambiguous results fail instead of selecting
+  the first team. This command is also used by the settings team's **Refresh** action.
 - `/v2/user` identifies the signed-in CLI user.
 - `/ai-gateway/budgets/list?teamId=...&scopeType=user` supplies that team's personal budgets.
+
+The budget request omits both `limit` and `cursor`: the list API returns every budget in that mode.
+Pagination is opt-in for this endpoint, unlike the CLI's team list.
 
 The personal budget is matched by user ID, never by the first list entry or a display name. A custom
 budget takes precedence over an inherited default. The card shows spend, limit, remaining personal
@@ -31,7 +42,8 @@ allowance, and the refresh cadence. Daily, weekly, and monthly budgets reset at 
 weekly budgets reset on Monday. A cumulative (`none`) budget has no reset date.
 
 When no active personal budget exists, CodexBar says so without inventing a usage percentage or spend.
-CLI login, permission, and parsing failures remain visible instead of falling back to unrelated team credits.
+In automatic mode without an explicit team override, a failed CLI fetch can fall back to the configured
+Gateway key's team-credit view. Explicit CLI mode and explicit team choices surface failures instead.
 The CLI source describes the signed-in user in the selected team; it does not infer the owner of a Gateway key.
 It works with CLI versions that support `vercel api --raw --non-interactive`, even without the newer
 `vercel ai-gateway` subcommand. Every team role except Contributor can read budgets.
@@ -44,6 +56,10 @@ Synthetic personal-budget examples in light and dark appearances:
 
 ![Personal budget in light appearance](screenshots/vercel-personal-budget.png)
 ![Personal budget in dark appearance](screenshots/vercel-personal-budget-dark.png)
+
+Synthetic source and team settings:
+
+![Source and team settings](screenshots/vercel-team-settings.png)
 
 ## Team credits with an API key
 

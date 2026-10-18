@@ -49,5 +49,23 @@ final class APIBalanceScreenshotRenderTests: XCTestCase {
                     .write(to: directory.appendingPathComponent("\(name)-synthetic\(dark ? "-dark" : "").png"))
             }
         }
+        let fixture = try ProviderSettingsDescriptorTests().makeSettingsFixture(suite: "VercelTeamSettingsScreenshot")
+        fixture.store.vercelTeams = try VercelTeamSettingsTests.teams()
+        fixture.settings[providerConfig: .vercel, field: .workspace] = "team_fixture"
+        let pickers = VercelProviderImplementation()
+            .settingsPickers(context: fixture.settingsContext(provider: .vercel))
+        let settingsView = Form {
+            ForEach(pickers) { picker in
+                ProviderSettingsPickerRowView(picker: picker)
+            }
+        }
+        .formStyle(.grouped)
+        .frame(width: 620, height: 260)
+        .environment(\.locale, Locale(identifier: "en"))
+        .preferredColorScheme(.light)
+        let hosting = NSHostingView(rootView: settingsView)
+        hosting.appearance = NSAppearance(named: .aqua)
+        try XCTUnwrap(MenuLayoutScreenshotRenderTests.pngDataWithWindow(hosting: hosting))
+            .write(to: directory.appendingPathComponent("vercel-team-settings.png"))
     }
 }
