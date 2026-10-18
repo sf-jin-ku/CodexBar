@@ -771,6 +771,7 @@ struct LocalizationLanguageCatalogTests {
             "Pro",
             "SuperGrok OAuth",
             "Token",
+            "Vercel CLI",
             "Zed cookie",
             "ZeroGPU",
             "__raycast_session=…; csrf_token=…",
