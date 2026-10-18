@@ -36,6 +36,9 @@ CodexBar runs read-only `vercel api` commands with JSON output:
 The budget request uses `limit=200` and follows `nextCursor` with the same team scope on every page.
 This keeps large teams' responses within the CLI's 1 MiB output limit. Up to 100 pages are read;
 repeated cursors, incomplete traversal, and failed pages fail the refresh without publishing a partial budget.
+Team discovery, user identification, and all budget pages share a 30-second monotonic deadline.
+Each command gets at most 15 seconds, capped by the remaining time. The settings team's **Refresh**
+action has its own 30-second deadline. Responses arriving after the deadline are rejected.
 
 The personal budget is matched by user ID, never by the first list entry or a display name. A custom
 budget takes precedence over an inherited default. The card shows spend, limit, remaining personal
@@ -49,6 +52,9 @@ Existing history is preserved on disk, but is neither displayed nor extended by 
 When no active personal budget exists, CodexBar says so without inventing a usage percentage or spend.
 In automatic mode without an explicit team override, a failed CLI fetch can fall back to the configured
 Gateway key's team-credit view. Explicit CLI mode and explicit team choices surface failures instead.
+When fallback succeeds, a diagnostic explains that team credits are being shown because the CLI
+personal budget was unavailable. Timeout and oversized-response errors are distinguished without
+exposing raw CLI output.
 The CLI source describes the signed-in user in the selected team; it does not infer the owner of a Gateway key.
 It works with CLI versions that support `vercel api --raw --non-interactive`, even without the newer
 `vercel ai-gateway` subcommand. Every team role except Contributor can read budgets.

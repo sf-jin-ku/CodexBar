@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 import Testing
 @testable import CodexBar
 @testable import CodexBarCore
@@ -31,7 +34,7 @@ struct VercelCLIUsageTests {
         teamID: String? = "team_fixture") async throws -> UsageSnapshot
     {
         let expectedTeam = teamID ?? "team_fixture"
-        let fetcher = VercelCLIUsageFetcher(run: { arguments, environment in
+        let fetcher = VercelCLIUsageFetcher(run: { arguments, environment, _ in
             #expect(environment["CI"] == "1")
             #expect(environment["VERCEL_TELEMETRY_DISABLED"] == "1")
             #expect(environment["AI_GATEWAY_API_KEY"] == nil)
@@ -75,7 +78,7 @@ struct VercelCLIUsageTests {
 
     @Test
     func `team discovery follows every page without switching the CLI team`() async throws {
-        let fetcher = VercelCLIUsageFetcher(run: { arguments, _ in
+        let fetcher = VercelCLIUsageFetcher(run: { arguments, _, _ in
             #expect(arguments.prefix(2) == ["teams", "list"])
             #expect(!arguments.contains("switch"))
             #expect(!arguments.contains("--scope"))
@@ -98,7 +101,7 @@ struct VercelCLIUsageTests {
 
     @Test
     func `missing current teams are not replaced by the first membership`() async throws {
-        let fetcher = VercelCLIUsageFetcher(run: { arguments, _ in
+        let fetcher = VercelCLIUsageFetcher(run: { arguments, _, _ in
             #expect(arguments.first == "teams")
             return "{\"teams\":\(Self.teamsJSON.replacingOccurrences(of: "true", with: "false"))}"
         })
@@ -116,7 +119,7 @@ struct VercelCLIUsageTests {
             "private-response", "{}", #"{"teams":[],"pagination":{"next":10}}"#,
             "{\"teams\":\(Self.teamsJSON.replacingOccurrences(of: "false", with: "true"))}",
         ] {
-            let fetcher = VercelCLIUsageFetcher(run: { _, _ in body })
+            let fetcher = VercelCLIUsageFetcher(run: { _, _, _ in body })
             do {
                 _ = try await fetcher.teams(environment: [:])
                 Issue.record("Expected invalid team response")
@@ -167,7 +170,7 @@ struct VercelCLIUsageTests {
             + "\"nextCursor\":null}"
         let cap = 1024 * 1024
         #expect(first.utf8.count + last.utf8.count > cap)
-        let fetcher = VercelCLIUsageFetcher(run: { arguments, _ in
+        let fetcher = VercelCLIUsageFetcher(run: { arguments, _, _ in
             #expect(arguments.suffix(2) == ["--scope", "team_fixture"])
             if arguments[1] == "/v2/user" { return Self.user }
             let query = try #require(URLComponents(string: arguments[1])?.queryItems)
@@ -187,7 +190,7 @@ struct VercelCLIUsageTests {
     @Test
     func `incomplete budget pagination never publishes a partial personal budget`() async throws {
         for failure in ["repeat", "empty", "malformed", "command", "cancel", "ceiling"] {
-            let fetcher = VercelCLIUsageFetcher(run: { arguments, _ in
+            let fetcher = VercelCLIUsageFetcher(run: { arguments, _, _ in
                 if arguments[1] == "/v2/user" { return Self.user }
                 let cursor = URLComponents(string: arguments[1])?.queryItems?.first { $0.name == "cursor" }?.value
                 if let cursor {
@@ -271,7 +274,7 @@ struct VercelCLIUsageTests {
 
     @Test
     func `invalid explicit team scopes are rejected before running a command`() async throws {
-        let fetcher = VercelCLIUsageFetcher(run: { _, _ in
+        let fetcher = VercelCLIUsageFetcher(run: { _, _, _ in
             Issue.record("Invalid team must not launch the CLI")
             return "{}"
         })
@@ -285,7 +288,7 @@ struct VercelCLIUsageTests {
 
     @Test
     func `CLI failures hide stderr and cancellation propagates`() async throws {
-        let fetcher = VercelCLIUsageFetcher(run: { _, _ in
+        let fetcher = VercelCLIUsageFetcher(run: { _, _, _ in
             throw SubprocessRunnerError.nonZeroExit(code: 1, stderr: "private-response")
         })
         do {
@@ -295,7 +298,7 @@ struct VercelCLIUsageTests {
             #expect(error.kind == .apiFailure)
             #expect(!error.message.contains("private-response"))
         }
-        let cancelled = VercelCLIUsageFetcher(run: { _, _ in throw CancellationError() })
+        let cancelled = VercelCLIUsageFetcher(run: { _, _, _ in throw CancellationError() })
         await #expect(throws: CancellationError.self) {
             try await cancelled.fetch(environment: ["VERCEL_TEAM_ID": "team_fixture"])
         }
@@ -315,7 +318,7 @@ struct VercelCLIUsageTests {
             (#"{"user":{"id":""}}"#, "{\"budgets\":[]}"),
             (Self.user, "private-response"),
         ] {
-            let fetcher = VercelCLIUsageFetcher(run: { arguments, _ in
+            let fetcher = VercelCLIUsageFetcher(run: { arguments, _, _ in
                 arguments[1] == "/v2/user" ? user : response
             })
             do {
@@ -351,6 +354,166 @@ struct VercelCLIUsageTests {
             on: failure, context: ProviderCutoverTestSupport.context(environment: ["VERCEL_TEAM_ID": "team_fixture"])))
         #expect(!VercelCLIFetchStrategy().shouldFallback(
             on: failure, context: ProviderCutoverTestSupport.context(sourceMode: .cli)))
+    }
+}
+
+struct VercelCLIDeadlineTests {
+    @Test(arguments: [false, true])
+    func `team discovery user lookup and budget pages share one deadline`(late: Bool) async throws {
+        let clock = Clock()
+        let fetcher = VercelCLIUsageFetcher(run: { arguments, _, timeout in
+            let call = clock.record(timeout: timeout, elapsed: .seconds(clock.timeouts.count == 4 ? (late ? 3 : 1) : 7))
+            if arguments.first == "teams" {
+                return "{\"teams\":\(call == 1 ? "[]" : VercelCLIUsageTests.teamsJSON),"
+                    + "\"pagination\":{\"next\":\(call == 1 ? "10" : "null")}}"
+            }
+            if arguments[1] == "/v2/user" { return VercelCLIUsageTests.user }
+            #expect(arguments.suffix(2) == ["--scope", "team_fixture"])
+            return call == 4
+                ? "{\"budgets\":[\(VercelCLIUsageTests.budget())],\"nextCursor\":\"next\"}"
+                : #"{"budgets":[],"nextCursor":null}"#
+        }, clockNow: { clock.now })
+        do {
+            let snapshot = try await fetcher.fetch(environment: [:], now: VercelCLIUsageTests.now)
+            #expect(!late)
+            #expect(snapshot.primary?.usedPercent == 12.4)
+        } catch let error as ProviderFetchClassifiedError {
+            #expect(late)
+            #expect(error.kind == .networkFailure)
+            #expect(error.message.contains("timed out"))
+        }
+        #expect(clock.timeouts == [15, 15, 15, 9, 2])
+    }
+
+    @Test
+    func `standalone team refresh rejects late pages without returning a partial inventory`() async throws {
+        let clock = Clock()
+        let fetcher = VercelCLIUsageFetcher(run: { _, _, timeout in
+            let call = clock.record(timeout: timeout, elapsed: .seconds(14))
+            return """
+            {"teams":[{"id":"team_\(call)","slug":"fixture","name":"Fixture","current":false}],
+            "pagination":{"next":\(call)}}
+            """
+        }, clockNow: { clock.now })
+        do {
+            _ = try await fetcher.teams(environment: [:])
+            Issue.record("Expected the shared team deadline to reject incomplete discovery")
+        } catch let error as ProviderFetchClassifiedError {
+            #expect(error.kind == .networkFailure)
+        }
+        #expect(clock.timeouts == [15, 15, 2])
+    }
+
+    @Test
+    func `cancellation before lookup starts no commands`() async throws {
+        let fetcher = VercelCLIUsageFetcher(run: { _, _, _ in
+            Issue.record("Cancelled lookups must not start a command")
+            return "{}"
+        })
+        let task = Task {
+            withUnsafeCurrentTask { $0?.cancel() }
+            return try await fetcher.fetch(environment: [:])
+        }
+        await #expect(throws: CancellationError.self) { try await task.value }
+    }
+
+    @Test
+    func `typed process failures remain actionable without exposing command data`() async throws {
+        for (failure, kind) in [
+            (SubprocessRunnerError.timedOut("private-response"), ProviderFetchClassifiedError.Kind.networkFailure),
+            (.outputTooLarge("private-response"), .parseFailure),
+            (.binaryNotFound("private-response"), .missingCredential),
+        ] {
+            let fetcher = VercelCLIUsageFetcher(run: { _, _, _ in throw failure })
+            do {
+                _ = try await fetcher.fetch(environment: ["VERCEL_TEAM_ID": "team_fixture"])
+                Issue.record("Expected a classified process failure")
+            } catch let error as ProviderFetchClassifiedError {
+                #expect(error.kind == kind)
+                #expect(!error.message.contains("private-response"))
+            }
+        }
+    }
+
+    private final class Clock: @unchecked Sendable {
+        private let lock = NSLock()
+        private var instant = ContinuousClock.now
+        private var recordedTimeouts: [TimeInterval] = []
+
+        var now: ContinuousClock.Instant {
+            self.lock.withLock { self.instant }
+        }
+
+        var timeouts: [TimeInterval] {
+            self.lock.withLock { self.recordedTimeouts }
+        }
+
+        func record(timeout: TimeInterval, elapsed: Duration) -> Int {
+            self.lock.withLock {
+                self.recordedTimeouts.append(timeout)
+                self.instant = self.instant.advanced(by: elapsed)
+                return self.recordedTimeouts.count
+            }
+        }
+    }
+}
+
+struct VercelFallbackTests {
+    @Test(
+        arguments: [ProviderSourceMode.auto, .api, .cli],
+        [(false, false), (false, true), (true, false), (true, true)])
+    func `only automatic unscoped failures fall back with a team credit diagnostic`(
+        source: ProviderSourceMode, selection: (explicitTeam: Bool, cancellation: Bool)) async throws
+    {
+        let (explicitTeam, cancellation) = selection
+        var environment = ["AI_GATEWAY_API_KEY": "fixture-key"]
+        if explicitTeam { environment["VERCEL_TEAM_ID"] = "team_fixture" }
+        let context = ProviderCutoverTestSupport.context(environment: environment, sourceMode: source)
+        let fallback = source == .auto && !explicitTeam && !cancellation
+        let api = VercelAPIFetchStrategy(base: VercelProviderDescriptor.spec.makeStrategy(
+            transport: ProviderHTTPTransportHandler { request in
+                #expect(source == .api || fallback)
+                #expect(request.url?.absoluteString == "https://ai-gateway.vercel.sh/v1/credits")
+                #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer fixture-key")
+                let response = try #require(HTTPURLResponse(
+                    url: request.url!,
+                    statusCode: 200,
+                    httpVersion: nil,
+                    headerFields: ["Content-Type": "application/json"]))
+                return (Data(#"{"balance":"95.50","total_used":"4.50"}"#.utf8), response)
+            }))
+        let fetcher = VercelCLIUsageFetcher(run: { _, _, _ in
+            if cancellation { throw CancellationError() }
+            throw SubprocessRunnerError.timedOut("private-response")
+        })
+        let pipeline = ProviderFetchPipeline(resolveStrategies: { context in
+            let strategies = await VercelProviderDescriptor.descriptor.fetchPlan.pipeline.resolveStrategies(context)
+            return strategies.map { strategy -> any ProviderFetchStrategy in
+                #expect(strategy.id == "vercel.cli" || strategy is VercelAPIFetchStrategy)
+                return strategy.id == "vercel.cli" ? VercelCLIFetchStrategy(fetcher: fetcher) : api
+            }
+        })
+        let outcome = await pipeline.fetch(context: context, provider: .vercel)
+        if source == .api || fallback {
+            let result = try outcome.result.get()
+            #expect(result.strategyID == "vercel.js")
+            #expect(result.sourceLabel == "api")
+            #expect(result.usage.details.first?.title == "Team credits")
+            #expect(result.usage.identity?.accountEmail == nil)
+            #expect((result.diagnostic != nil) == fallback)
+            if fallback {
+                #expect(result.diagnostic?.contains("team credits") == true)
+                #expect(result.diagnostic?.contains("private-response") == false)
+            }
+            #expect(outcome.attempts.map(\.strategyID) == (fallback ? ["vercel.cli", "vercel.js"] : ["vercel.js"]))
+        } else {
+            #expect(outcome.attempts.map(\.strategyID) == ["vercel.cli"])
+            switch outcome.result {
+            case .success: Issue.record("Explicit scope and cancellation must not fall back")
+            case let .failure(error):
+                #expect((error is CancellationError) == cancellation)
+            }
+        }
     }
 }
 

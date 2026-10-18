@@ -10,9 +10,9 @@ public enum VercelProviderDescriptor {
             case .auto where SettingsValue.cleaned(context.env["VERCEL_TEAM_ID"]) != nil:
                 [VercelCLIFetchStrategy()]
             case .auto:
-                [VercelCLIFetchStrategy(), Self.spec.makeStrategy()]
+                [VercelCLIFetchStrategy(), VercelAPIFetchStrategy()]
             case .api:
-                [Self.spec.makeStrategy()]
+                [VercelAPIFetchStrategy()]
             case .web, .oauth:
                 []
             }
@@ -46,4 +46,31 @@ public enum VercelProviderDescriptor {
                 title: "Team ID",
                 subtitle: "Uses the CLI's current team by default. Refresh to choose another team.",
                 placeholder: nil)))
+}
+
+struct VercelAPIFetchStrategy: ProviderFetchStrategy {
+    var base = VercelProviderDescriptor.spec.makeStrategy()
+    var id: String {
+        self.base.id
+    }
+
+    var kind: ProviderFetchKind {
+        self.base.kind
+    }
+
+    func isAvailable(_ context: ProviderFetchContext) async -> Bool {
+        await self.base.isAvailable(context)
+    }
+
+    func fetch(_ context: ProviderFetchContext) async throws -> ProviderFetchResult {
+        try await self.base.fetch(context)
+    }
+
+    func shouldFallback(on error: Error, context: ProviderFetchContext) -> Bool {
+        self.base.shouldFallback(on: error, context: context)
+    }
+
+    func diagnostic(forPriorFailure _: Error) -> String? {
+        "Personal budget unavailable from Vercel CLI; showing the API key's team credits instead."
+    }
 }
