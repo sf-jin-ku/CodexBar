@@ -29,6 +29,8 @@ public enum VercelProviderDescriptor {
         confetti: [0xFFFFFF, 0xA3A3A3],
         progressColorStyle: .label,
         noDataMessage: "Vercel AI Gateway cost history is not available.",
+        history: .unavailable,
+        burnDownWidgetSelectable: false,
         environmentKey: "AI_GATEWAY_API_KEY",
         missingCredentialMessage: { _ in "Set a Vercel AI Gateway API key in Settings or AI_GATEWAY_API_KEY." },
         config: ProviderConfigCapabilities(workspaceIDValidationOrder: 9),

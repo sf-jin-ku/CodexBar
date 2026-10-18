@@ -49,7 +49,7 @@ struct VercelCLIUsageTests {
             #expect(arguments[2] == "--raw")
             switch arguments[1] {
             case "/v2/user": return user
-            case "/ai-gateway/budgets/list?teamId=\(expectedTeam)&scopeType=user":
+            case "/ai-gateway/budgets/list?teamId=\(expectedTeam)&scopeType=user&limit=200":
                 return "{\"budgets\":[\(budgets.joined(separator: ","))]}"
             default:
                 Issue.record("Unexpected endpoint")
@@ -152,14 +152,67 @@ struct VercelCLIUsageTests {
         #expect(try await Self.fetch([inherited, custom]).primary?.usedPercent == 15)
     }
 
-    @Test
-    func `unpaged requests select the user custom budget at the end of a large flat list`() async throws {
-        let others = (0..<250).map { Self.budget(user: "other_user_\($0)", spend: "99") }
-        let inherited = Self.budget(spend: "20", limit: "50", source: "default")
-        let custom = Self.budget(spend: "30", limit: "200")
-        let snapshot = try await Self.fetch([inherited] + others + [custom])
+    @Test(arguments: [false, true])
+    func `budget pages stay below the output cap and select custom budgets across pages`(
+        inherited: Bool) async throws
+    {
+        let padding = String(repeating: "x", count: 3000)
+        let other = Self.budget(user: "other_user").dropLast() + ",\"name\":\"\(padding)\"}"
+        let others = Array(repeating: String(other), count: 199)
+        let cursor = "next&scopeType=team +%/#?"
+        let firstBudget = inherited ? Self.budget(source: "default") : String(other)
+        let first = try "{\"budgets\":[\(([firstBudget] + others).joined(separator: ","))],"
+            + "\"nextCursor\":\(String(data: JSONEncoder().encode(cursor), encoding: .utf8)!)}"
+        let last = "{\"budgets\":[\((others + [Self.budget(spend: "30", limit: "200")]).joined(separator: ","))],"
+            + "\"nextCursor\":null}"
+        let cap = 1024 * 1024
+        #expect(first.utf8.count + last.utf8.count > cap)
+        let fetcher = VercelCLIUsageFetcher(run: { arguments, _ in
+            #expect(arguments.suffix(2) == ["--scope", "team_fixture"])
+            if arguments[1] == "/v2/user" { return Self.user }
+            let query = try #require(URLComponents(string: arguments[1])?.queryItems)
+            #expect(query.first { $0.name == "teamId" }?.value == "team_fixture")
+            #expect(query.filter { $0.name == "scopeType" }.map(\.value) == ["user"])
+            #expect(query.first { $0.name == "limit" }?.value == "200")
+            let next = query.first { $0.name == "cursor" }?.value
+            #expect(next == nil || next == cursor)
+            let output = next == nil ? first : last
+            guard output.utf8.count < cap else { throw SubprocessRunnerError.outputTooLarge("fixture") }
+            return output
+        })
+        let snapshot = try await fetcher.fetch(environment: ["VERCEL_TEAM_ID": "team_fixture"], now: Self.now)
         #expect(snapshot.primary?.usedPercent == 15)
-        #expect(snapshot.identity?.accountID == "user_fixture")
+    }
+
+    @Test
+    func `incomplete budget pagination never publishes a partial personal budget`() async throws {
+        for failure in ["repeat", "empty", "malformed", "command", "cancel", "ceiling"] {
+            let fetcher = VercelCLIUsageFetcher(run: { arguments, _ in
+                if arguments[1] == "/v2/user" { return Self.user }
+                let cursor = URLComponents(string: arguments[1])?.queryItems?.first { $0.name == "cursor" }?.value
+                if let cursor {
+                    switch failure {
+                    case "malformed": return "private-response"
+                    case "command": throw SubprocessRunnerError.nonZeroExit(code: 1, stderr: "private-response")
+                    case "cancel": throw CancellationError()
+                    default: break
+                    }
+                    #expect(!cursor.isEmpty)
+                }
+                let next = failure == "empty" ? "" : failure == "ceiling" ? String((
+                    Int(cursor ?? "0") ?? 0) + 1) : "next"
+                return "{\"budgets\":[\(Self.budget())],\"nextCursor\":\"\(next)\"}"
+            })
+            do {
+                _ = try await fetcher.fetch(environment: ["VERCEL_TEAM_ID": "team_fixture"])
+                Issue.record("Incomplete pages must not return the first matching budget")
+            } catch is CancellationError {
+                #expect(failure == "cancel")
+            } catch let error as ProviderFetchClassifiedError {
+                #expect(error.kind == (failure == "command" ? .apiFailure : .parseFailure))
+                #expect(!error.message.contains("private-response"))
+            }
+        }
     }
 
     @Test
@@ -395,5 +448,41 @@ struct VercelTeamSettingsTests {
         #expect(implementation.sourceMode(context: .init(provider: .vercel, settings: fixture.settings)) == .api)
         #expect(fixture.settings.providerConfig(for: .vercel)?.workspaceID == "team_fixture")
         #expect(pickers.first { $0.id == "vercel-team" }?.isVisible?() == false)
+    }
+
+    @Test
+    func `personal budgets do not expose or append provider wide plan history across teams`() async throws {
+        let fixture = try ProviderSettingsDescriptorTests().makeSettingsFixture(suite: "VercelHistoryIsolation")
+        let store = fixture.store
+        fixture.settings.historicalTrackingEnabled = true
+        let legacy = planSeries(name: .weekly, windowMinutes: 10080, entries: [
+            planEntry(at: VercelCLIUsageTests.now, usedPercent: 90),
+        ])
+        let buckets = PlanUtilizationHistoryBuckets(
+            preferredAccountKey: "legacy-email",
+            unscoped: [legacy],
+            accounts: ["legacy-email": [legacy]])
+        store._cancelPlanUtilizationHistoryLoadForTesting()
+        store.planUtilizationHistory[.vercel] = buckets
+        let recorder = WeeklyLimitResetEventRecorder(provider: .vercel, accountLabel: "fixture@example.com")
+        defer { recorder.invalidate() }
+        for (index, team) in ["team_fixture", "team_other", "team_fixture"].enumerated() {
+            let snapshot = try await VercelCLIUsageTests.fetch(
+                [VercelCLIUsageTests.budget(spend: index == 0 ? "90" : "0", period: "weekly")],
+                now: VercelCLIUsageTests.now.addingTimeInterval(Double(index) * 7 * 86400),
+                teamID: team)
+            store.snapshots[.vercel] = snapshot
+            await store.recordPlanUtilizationHistorySample(
+                provider: .vercel,
+                snapshot: snapshot,
+                now: snapshot.updatedAt)
+            #expect(store.planUtilizationHistory(for: .vercel).isEmpty)
+            #expect(store.planUtilizationHistorySelection(for: .vercel, snapshotOverride: snapshot).histories.isEmpty)
+            #expect(store.planUtilizationHistory[.vercel] == buckets)
+        }
+        #expect(!VercelProviderDescriptor.descriptor.history.supportsPlanUtilization)
+        #expect(!VercelProviderDescriptor.spec.burnDownWidgetSelectable)
+        #expect(store.weeklyLimitResetDetectorStates.isEmpty)
+        #expect(recorder.events.isEmpty)
     }
 }

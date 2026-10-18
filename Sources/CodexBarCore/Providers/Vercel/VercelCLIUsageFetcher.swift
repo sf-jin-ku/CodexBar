@@ -23,11 +23,25 @@ public struct VercelCLIUsageFetcher: Sendable {
         }
         let user: UserResponse = try await self.read("/v2/user", teamID: teamID, environment: environment)
         guard !user.user.id.isEmpty else { throw Self.invalidOutput }
-        // limit과 cursor를 생략하면 API가 해당 scope의 전체 예산을 반환한다.
-        let response: BudgetResponse = try await self.read(
-            "/ai-gateway/budgets/list?teamId=\(teamID)&scopeType=user", teamID: teamID, environment: environment)
-        let matches = response.budgets.filter {
-            $0.scopeType == "user" && $0.scopeId == user.user.id && $0.active && !$0.archived
+        var matches: [Budget] = []
+        var cursor: String?
+        var cursors: Set<String> = []
+        // ponytail: 100페이지를 상한으로 둔다. 더 큰 계정은 전체 조회 시간 제한으로 전환한다.
+        for pageIndex in 0..<100 {
+            var endpoint = "/ai-gateway/budgets/list?teamId=\(teamID)&scopeType=user&limit=200"
+            if let cursor {
+                guard let encoded = cursor.addingPercentEncoding(withAllowedCharacters: .alphanumerics) else {
+                    throw Self.invalidOutput
+                }
+                endpoint += "&cursor=\(encoded)"
+            }
+            let page: BudgetResponse = try await self.read(endpoint, teamID: teamID, environment: environment)
+            matches += page.budgets.filter {
+                $0.scopeType == "user" && $0.scopeId == user.user.id && $0.active && !$0.archived
+            }
+            guard let next = page.nextCursor else { break }
+            guard !next.isEmpty, cursors.insert(next).inserted, pageIndex < 99 else { throw Self.invalidOutput }
+            cursor = next
         }
         let custom = matches.filter { $0.source != "default" }
         let effective = custom.isEmpty ? matches : custom
@@ -195,6 +209,7 @@ public struct VercelCLIUsageFetcher: Sendable {
 
     private struct BudgetResponse: Decodable {
         let budgets: [Budget]
+        let nextCursor: String?
     }
 
     private struct TeamsResponse: Decodable {

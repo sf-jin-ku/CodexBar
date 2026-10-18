@@ -33,13 +33,18 @@ CodexBar runs read-only `vercel api` commands with JSON output:
 - `/v2/user` identifies the signed-in CLI user.
 - `/ai-gateway/budgets/list?teamId=...&scopeType=user` supplies that team's personal budgets.
 
-The budget request omits both `limit` and `cursor`: the list API returns every budget in that mode.
-Pagination is opt-in for this endpoint, unlike the CLI's team list.
+The budget request uses `limit=200` and follows `nextCursor` with the same team scope on every page.
+This keeps large teams' responses within the CLI's 1 MiB output limit. Up to 100 pages are read;
+repeated cursors, incomplete traversal, and failed pages fail the refresh without publishing a partial budget.
 
 The personal budget is matched by user ID, never by the first list entry or a display name. A custom
 budget takes precedence over an inherited default. The card shows spend, limit, remaining personal
 allowance, and the refresh cadence. Daily, weekly, and monthly budgets reset at UTC boundaries;
 weekly budgets reset on Monday. A cumulative (`none`) budget has no reset date.
+
+Vercel does not participate in generic plan-utilization history or burn-down widgets. Personal budgets
+belong to a user within a team; a provider-wide history bucket cannot represent that ownership safely.
+Existing history is preserved on disk, but is neither displayed nor extended by this provider.
 
 When no active personal budget exists, CodexBar says so without inventing a usage percentage or spend.
 In automatic mode without an explicit team override, a failed CLI fetch can fall back to the configured
