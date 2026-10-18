@@ -6,12 +6,13 @@ enum ProviderCutoverTestSupport {
         environment: [String: String] = [:],
         settings: ProviderSettingsSnapshot? = nil,
         runtime: ProviderRuntime = .app,
+        sourceMode: ProviderSourceMode = .auto,
         includeCredits: Bool = false,
         includeOptionalUsage: Bool = true) -> ProviderFetchContext
     {
         ProviderFetchContext(
             runtime: runtime,
-            sourceMode: .auto,
+            sourceMode: sourceMode,
             includeCredits: includeCredits,
             includeOptionalUsage: includeOptionalUsage,
             webTimeout: 15,

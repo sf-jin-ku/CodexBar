@@ -24,10 +24,19 @@ struct ProviderSettingsDescriptorTests {
         let fixture = try self.makeSettingsFixture(suite: "ProviderSettingsDescriptorTests-\(provider.rawValue)")
         let implementation = try #require(ProviderCatalog.implementation(for: provider))
         let fields = implementation.settingsFields(context: fixture.settingsContext(provider: provider))
-        #expect(fields.map(\.id) == ["\(provider.rawValue)-api-key"])
-        #expect(fields.map(\.kind) == [.secure])
+        #expect(fields.map(\.id) == (provider == .vercel
+                ? ["vercel-api-key", "vercel-team-id"] : ["atlascloud-api-key"]))
+        #expect(fields.map(\.kind) == (provider == .vercel ? [.secure, .plain] : [.secure]))
         fields[0].binding.wrappedValue = "fixture-key"
         #expect(fixture.settings.providerConfig(for: provider)?.apiKey == "fixture-key")
+        if provider == .vercel {
+            fields[1].binding.wrappedValue = "team_fixture"
+            let config = try #require(fixture.settings.providerConfig(for: .vercel))
+            #expect(config.workspaceID == "team_fixture")
+            #expect(VercelProviderDescriptor.descriptor.credentials?.applyConfig(base: [:], config: config)[
+                "VERCEL_TEAM_ID",
+            ] == "team_fixture")
+        }
     }
 
     @Test

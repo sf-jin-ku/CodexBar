@@ -12,8 +12,12 @@ final class APIBalanceScreenshotRenderTests: XCTestCase {
         }
         let directory = URL(fileURLWithPath: path, isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        for provider in [UsageProvider.atlascloud, .vercel] {
-            let snapshot = try await APIBalancePluginTests.fetch(provider.rawValue, engine: .quickJS)
+        let snapshots: [(String, UsageProvider, UsageSnapshot)] = try await [
+            ("atlascloud", .atlascloud, APIBalancePluginTests.fetch("atlascloud", engine: .quickJS)),
+            ("vercel", .vercel, APIBalancePluginTests.fetch("vercel", engine: .quickJS)),
+            ("vercel-personal-budget", .vercel, VercelCLIUsageTests.fetch([VercelCLIUsageTests.budget()])),
+        ]
+        for (name, provider, snapshot) in snapshots {
             let model = try UsageMenuCardView.Model.make(.init(
                 provider: provider,
                 metadata: XCTUnwrap(ProviderDefaults.metadata[provider]),
@@ -33,15 +37,17 @@ final class APIBalanceScreenshotRenderTests: XCTestCase {
                 hidePersonalInfo: true,
                 usesLiveSubtitle: false,
                 now: snapshot.updatedAt))
-            let view = AnyView(UsageMenuCardView(model: model, width: 380)
-                .environment(\.locale, Locale(identifier: "en_US_POSIX"))
-                .environment(\.colorScheme, .light)
-                .environment(\.displayScale, 2)
-                .background(Color(nsColor: .windowBackgroundColor)))
-            let hosting = NSHostingView(rootView: view)
-            hosting.appearance = NSAppearance(named: .aqua)
-            try XCTUnwrap(MenuLayoutScreenshotRenderTests.pngDataWithWindow(hosting: hosting))
-                .write(to: directory.appendingPathComponent("\(provider.rawValue)-synthetic.png"))
+            for dark in [false, true] {
+                let view = AnyView(UsageMenuCardView(model: model, width: 380)
+                    .environment(\.locale, Locale(identifier: "en_US_POSIX"))
+                    .environment(\.colorScheme, dark ? .dark : .light)
+                    .environment(\.displayScale, 2)
+                    .background(Color(nsColor: .windowBackgroundColor)))
+                let hosting = NSHostingView(rootView: view)
+                hosting.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+                try XCTUnwrap(MenuLayoutScreenshotRenderTests.pngDataWithWindow(hosting: hosting))
+                    .write(to: directory.appendingPathComponent("\(name)-synthetic\(dark ? "-dark" : "").png"))
+            }
         }
     }
 }

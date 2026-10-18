@@ -2183,6 +2183,7 @@
 "Stored in ~/.codexbar/config.json. Create one at console.x.ai under Settings > Management Keys; inference API keys are not accepted." = "儲存在~/.codexbar/config.json中。在「設定」>「管理金鑰」下的 console.x.ai 建立一個；推斷 API 金鑰不被接受。";
 "xai-..." = "xai-...";
 "Team ID" = "團隊 ID";
+"Optional. Set a team ID to show your personal budget using 'vercel login'. No extra token required." = "選填。輸入團隊 ID，即可使用 'vercel login' 的登入資訊顯示個人預算。無需額外權杖。";
 "Required. Shown in the xAI Console URL and team settings." = "必填。顯示在 xAI 控制台 URL 和團隊設定中。";
 "Sakana AI cost summary is not supported." = "暫不支持 Sakana AI 費用匯總。";
 "Stored in ~/.codexbar/config.json. Copy the Sakana AI console Cookie request header." = "儲存在~/.codexbar/config.json中。複製 Sakana AI 控制台 Cookie 請求標頭。";

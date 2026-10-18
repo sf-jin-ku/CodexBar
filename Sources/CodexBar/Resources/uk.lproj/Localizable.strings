@@ -2201,6 +2201,7 @@
 "Stored in ~/.codexbar/config.json. Create one at console.x.ai under Settings > Management Keys; inference API keys are not accepted." = "Зберігається в ~/.codexbar/config.json. Створіть його на console.x.ai у меню «Параметри» > «Ключі керування»; висновок Ключі API не приймаються.";
 "xai-..." = "xai-...";
 "Team ID" = "Команда ID";
+"Optional. Set a team ID to show your personal budget using 'vercel login'. No extra token required." = "Необов’язково. Вкажіть ID команди, щоб показати особистий бюджет через 'vercel login'. Додатковий токен не потрібен.";
 "Required. Shown in the xAI Console URL and team settings." = "Обов'язковий. Показано в налаштуваннях xAI Console URL і команди.";
 "Sakana AI cost summary is not supported." = "Підсумок вартості Sakana AI не підтримується.";
 "Stored in ~/.codexbar/config.json. Copy the Sakana AI console Cookie request header." = "Зберігається в ~/.codexbar/config.json. Скопіюйте заголовок запиту Cookie консолі Sakana AI.";

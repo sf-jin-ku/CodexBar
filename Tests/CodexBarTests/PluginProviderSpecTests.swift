@@ -148,7 +148,7 @@ struct PluginProviderSpecTests {
             #expect(await !strategy.isAvailable(ProviderCutoverTestSupport.context(
                 environment: ["OTHER_API_KEY": "fixture-key"])))
             #expect(descriptor.credentials?.resolveToken(environment: context.env)?.token == "fixture-key")
-            #expect(descriptor.fetchPlan.sourceModes == [.auto, .api])
+            #expect(descriptor.fetchPlan.sourceModes == (provider == .vercel ? [.auto, .api, .cli] : [.auto, .api]))
         }
     }
 
