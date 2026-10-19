@@ -117,7 +117,7 @@ defineProvider({
         {
           title: "Personal budget",
           rows: [
-            { label: "spent", value: spentText },
+            { label: "Spend", value: spentText },
             { label: "Limit", value: limitText },
             { label: "Remaining", value: ctx.format.usd(Math.max(0, limit - spent)) },
           ],

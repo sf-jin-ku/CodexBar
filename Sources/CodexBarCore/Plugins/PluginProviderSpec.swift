@@ -55,6 +55,8 @@ public struct PluginProviderSpec: Sendable {
     public var apiKeyDebugLabel: String?
     public var missingCredentialMessage: ProviderCredentialAdapter.MissingCredentialMessage?
     public var additionalProjections: [ProviderCredentialEnvironmentProjection] = []
+    /// A plugin secret that authenticates a separate script on its own, without becoming the API key.
+    public var alternateCredentialKey: String?
     public var tokenAccountSupport: TokenAccountSupport?
     public var configValidator: ProviderCredentialAdapter.ConfigValidator = { _ in [] }
     public var config = ProviderConfigCapabilities()

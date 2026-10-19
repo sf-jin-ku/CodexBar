@@ -30,6 +30,7 @@ public enum VercelProviderDescriptor {
             "Set a Vercel AI Gateway API key, or a Vercel access token and Team ID for your personal budget."
         },
         additionalProjections: [.init(key: Self.tokenKey, value: { $0.pluginSecrets?[Self.tokenKey] })],
+        alternateCredentialKey: Self.tokenKey,
         config: ProviderConfigCapabilities(workspaceIDValidationOrder: 9),
         presentation: ProviderUsagePresentation(menuBarBalanceDetailLabels: ["Available balance"]),
         apiKeyField: .init(

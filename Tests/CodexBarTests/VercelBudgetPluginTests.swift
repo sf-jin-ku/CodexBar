@@ -74,6 +74,8 @@ struct VercelBudgetPluginTests {
         #expect(snapshot.primary?.resetDescription == "$30.00 / $120.00")
         #expect(snapshot.details.first?.title == "Personal budget")
         #expect(snapshot.details.first?.rows.map(\.value) == ["$30.00", "$120.00", "$90.00"])
+        // `spent` is the catalog key for an exhausted quota; the amount row needs the spend noun.
+        #expect(snapshot.details.first?.rows.map(\.label) == ["Spend", "Limit", "Remaining"])
         #expect(snapshot.identity?.accountID == "user_fixture")
         #expect(snapshot.identity?.accountOrganization == "team_fixture")
         #expect(snapshot.dataConfidence == .exact)

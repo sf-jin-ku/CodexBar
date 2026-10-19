@@ -62,6 +62,7 @@ extension PluginProviderSpec {
         guard !self.environmentKey.isEmpty else { return nil }
         return ProviderCredentialAdapter(
             supportsAPIKeyOverride: true,
+            requiresAPIKeyForAPISource: self.alternateCredentialKey == nil,
             apiKeyDebugLabel: self.apiKeyDebugLabel,
             environmentProjections: self.credentialProjections,
             tokenResolver: { kind, environment, _ in
@@ -76,8 +77,24 @@ extension PluginProviderSpec {
                 return value.map { ProviderTokenResolution(token: $0, source: .environment) }
             },
             tokenAccountSupport: self.tokenAccountSupport,
-            authDetector: { environment, _ in self.apiKey(environment: environment) == nil ? [] : ["api"] },
-            configValidator: self.configValidator,
+            authDetector: { environment, _ in
+                let alternate = self.alternateCredentialKey.flatMap { SettingsValue.cleaned(environment[$0]) }
+                return self.apiKey(environment: environment) == nil && alternate == nil ? [] : ["api"]
+            },
+            configValidator: { config in
+                var issues = self.configValidator(config)
+                if let key = self.alternateCredentialKey, config.source == .api, config.sanitizedAPIKey == nil,
+                   SettingsValue.cleaned(config.pluginSecrets?[key]) == nil
+                {
+                    issues.append(CodexBarConfigIssue(
+                        severity: .warning,
+                        provider: self.id,
+                        field: "apiKey",
+                        code: "api_key_missing",
+                        message: "Source api is selected but apiKey is missing for \(self.id.rawValue)."))
+                }
+                return issues
+            },
             missingCredentialMessage: self.missingCredentialMessage)
     }
 
