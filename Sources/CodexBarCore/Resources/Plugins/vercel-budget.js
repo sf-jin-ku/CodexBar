@@ -9,8 +9,9 @@ defineProvider({
   ],
   capabilities: ["http-status"],
   async fetchUsage(ctx) {
-    const configuredTeam = ctx.settings.get("VERCEL_TEAM_ID")?.trim();
-    if (configuredTeam && !/^[A-Za-z0-9_-]{1,128}$/.test(configuredTeam)) {
+    const team = ctx.settings.get("VERCEL_TEAM_ID")?.trim();
+    if (!team) throw ctx.fail.missingCredential("Set the Vercel Team ID to read your personal budget.");
+    if (!/^[A-Za-z0-9_-]{1,128}$/.test(team)) {
       throw ctx.fail.permissionDenied("Invalid Vercel Team ID. Enter the team ID or slug without spaces.");
     }
     function fail() {
@@ -38,12 +39,6 @@ defineProvider({
 
     const user = (await read("https://api.vercel.com/v2/user"))?.user;
     if (typeof user?.id !== "string" || !user.id) return fail();
-    const defaultTeam = typeof user.defaultTeamId === "string" ? user.defaultTeamId.trim() : "";
-    const team = configuredTeam || defaultTeam;
-    if (!team) throw ctx.fail.missingCredential("Set the Vercel Team ID to read your personal budget.");
-
-    // `/v2/user` returns the bare user ID; budget rows prefix it with `usr_`.
-    const scopeId = user.id.startsWith("usr_") ? user.id : `usr_${user.id}`;
 
     // At most 20 pages; the plugin deadline bounds slower teams.
     const matches = [];
@@ -56,7 +51,7 @@ defineProvider({
       const body = await read(`https://api.vercel.com/ai-gateway/budgets/list?${query}`);
       if (!Array.isArray(body?.budgets)) return fail();
       for (const budget of body.budgets) {
-        if (budget?.scopeType !== "user" || budget.scopeId !== scopeId) continue;
+        if (budget?.scopeType !== "user" || ![user.id, `usr_${user.id}`].includes(budget.scopeId)) continue;
         if (typeof budget.active !== "boolean" || typeof budget.archived !== "boolean") return fail();
         if (budget.source !== undefined && budget.source !== "default") return fail();
         if (budget.active && !budget.archived) matches.push(budget);

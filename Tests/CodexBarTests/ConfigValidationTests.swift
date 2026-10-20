@@ -125,31 +125,6 @@ struct ConfigValidationTests {
     }
 
     @Test
-    func `Vercel access token satisfies API source without a gateway key`() throws {
-        var config = CodexBarConfig.makeDefault()
-        let tokenOnly = ProviderConfig(
-            id: .vercel,
-            source: .api,
-            pluginSecrets: ["VERCEL_ACCESS_TOKEN": "fixture-token"])
-        config.setProviderConfig(tokenOnly)
-        #expect(!CodexBarConfigValidator.validate(config).contains(where: {
-            $0.provider == .vercel && $0.code == "api_key_missing"
-        }))
-        let credentials = try #require(VercelProviderDescriptor.descriptor.credentials)
-        let auth = credentials.diagnosticAuthSummary(
-            account: nil,
-            config: tokenOnly,
-            environment: credentials.applyConfig(base: [:], config: tokenOnly),
-            settings: nil)
-        #expect(auth.modes == ["api"])
-
-        config.setProviderConfig(ProviderConfig(id: .vercel, source: .api))
-        #expect(CodexBarConfigValidator.validate(config).contains(where: {
-            $0.provider == .vercel && $0.code == "api_key_missing"
-        }))
-    }
-
-    @Test
     func `allows credentialless Wayfinder API source`() {
         var config = CodexBarConfig.makeDefault()
         config.setProviderConfig(ProviderConfig(

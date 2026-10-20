@@ -2,6 +2,10 @@
 
 ## 0.78.1 — Unreleased
 
+### Fixed
+
+- Vercel: recognize personal budgets with native or prefixed user IDs and label monetary usage as spend (#4650, #4623). Thanks @sf-jin-ku!
+
 ## 0.78.0 — 2026-10-19
 
 ### Highlights

@@ -2208,7 +2208,7 @@
 "Vercel access token" = "Токен доступа Vercel";
 "Optional. Shows your personal budget instead of team credits. Saved in CodexBar's local config file. Or set VERCEL_ACCESS_TOKEN." = "Необязательно. Показывает ваш личный бюджет вместо кредитов команды. Сохраняется в локальном файле конфигурации CodexBar. Или задайте VERCEL_ACCESS_TOKEN.";
 "Open Vercel tokens" = "Открыть токены Vercel";
-"Optional. Defaults to your Vercel default team. Or set VERCEL_TEAM_ID." = "Необязательно. По умолчанию используется ваша команда Vercel по умолчанию. Или задайте VERCEL_TEAM_ID.";
+"Required with a Vercel access token. Or set VERCEL_TEAM_ID." = "Требуется вместе с токеном доступа Vercel. Или задайте VERCEL_TEAM_ID.";
 "Required. Shown in the xAI Console URL and team settings." = "Обязательно. Отображается в консоли xAI URL и настройках команды.";
 "Sakana AI cost summary is not supported." = "Сводка затрат Sakana AI не поддерживается.";
 "Stored in ~/.codexbar/config.json. Copy the Sakana AI console Cookie request header." = "Хранится в ~/.codexbar/config.json. Скопируйте заголовок запроса консоли Sakana AI Cookie.";

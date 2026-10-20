@@ -9,9 +9,8 @@ read_when:
 Enable **Vercel AI Gateway** in Settings → Providers. The provider shows one of two views:
 
 - **Team credits** (default): enter an AI Gateway API key, or set `AI_GATEWAY_API_KEY`.
-- **Personal budget** (optional): enter a Vercel access token, or set `VERCEL_ACCESS_TOKEN`. The Team ID
-  (`VERCEL_TEAM_ID`, ID or slug) is optional and defaults to the account's default team. When a token is configured,
-  it replaces the team-credit view.
+- **Personal budget** (optional): enter a Vercel access token and Team ID, or set `VERCEL_ACCESS_TOKEN` and
+  `VERCEL_TEAM_ID`. When a token is configured, it replaces the team-credit view.
 
 Values entered in Settings are saved in CodexBar's local config file. Use `codexbar usage --provider vercel` to fetch.
 
@@ -32,10 +31,10 @@ reset countdown, or billing-period estimate. Select the appropriate team's API k
 
 ## Personal budget
 
-`vercel-budget.js` reads `GET /v2/user` for the token's user ID and `defaultTeamId`, then
+`vercel-budget.js` reads `GET /v2/user` for the token's user ID, then
 `GET /ai-gateway/budgets/list?teamId=…&scopeType=user` with `limit=200`, following `nextCursor` for up to 20 pages
-with the same team on every page. The configured Team ID takes precedence over the default team. `/v2/user` returns
-the bare user ID while budget rows use `usr_<id>`, so rows are matched against the prefixed form; a custom budget takes precedence over an inherited
+with the same team on every page. The budget is matched to the authenticated user's native ID or its `usr_`-prefixed
+form; a custom budget takes precedence over an inherited
 default. The card shows spend, limit, and remaining personal allowance. Daily, weekly, and monthly
 budgets reset at the documented UTC boundaries (weekly on Monday); a cumulative (`none`) budget has no reset date.
 
