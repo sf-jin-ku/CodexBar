@@ -10,10 +10,11 @@ struct VercelBudgetPluginTests {
     static let secrets = ["VERCEL_ACCESS_TOKEN": "fixture-token"]
     /// Wednesday, 2026-10-14 12:00 UTC.
     static let now = Date(timeIntervalSince1970: 1_791_979_200)
-    static let user = #"{"user":{"id":"user_fixture","email":"fixture@example.com"}}"#
+    /// `/v2/user` returns the bare ID while budget rows use the `usr_`-prefixed form.
+    static let user = #"{"user":{"id":"fixtureUser","email":"fixture@example.com","defaultTeamId":"team_default"}}"#
 
     static func budget(
-        _ user: String = "user_fixture",
+        _ user: String = "usr_fixtureUser",
         spend: String = "30",
         limit: String = "120",
         period: String = "monthly",
@@ -32,6 +33,8 @@ struct VercelBudgetPluginTests {
     /// Serves `/v2/user`, then budget pages keyed by the request's cursor (`""` for the first page).
     static func transport(
         pages: [String: String],
+        user: String = Self.user,
+        team: String = "team_fixture",
         recorder: Recorder = Recorder()) -> ProviderHTTPTransportHandler
     {
         ProviderHTTPTransportHandler { request in
@@ -39,9 +42,9 @@ struct VercelBudgetPluginTests {
             let url = try #require(request.url)
             #expect(url.host == "api.vercel.com")
             #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer fixture-token")
-            if url.path == "/v2/user" { return try Self.response(request, body: Self.user) }
+            if url.path == "/v2/user" { return try Self.response(request, body: user) }
             let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
-            #expect(items.first { $0.name == "teamId" }?.value == "team_fixture")
+            #expect(items.first { $0.name == "teamId" }?.value == team)
             #expect(items.first { $0.name == "scopeType" }?.value == "user")
             let cursor = items.first { $0.name == "cursor" }?.value ?? ""
             return try Self.response(request, body: #require(pages[cursor]))
@@ -52,10 +55,12 @@ struct VercelBudgetPluginTests {
         pages: [String: String],
         engine: ProviderPluginEngineKind = .quickJS,
         settings: [String: String] = Self.settings,
+        user: String = Self.user,
+        team: String = "team_fixture",
         recorder: Recorder = Recorder()) async throws -> UsageSnapshot
     {
-        let runtime = try BundledPluginTestSupport.runtime(
-            "vercel-budget", engine: engine, transport: Self.transport(pages: pages, recorder: recorder))
+        let transport = Self.transport(pages: pages, user: user, team: team, recorder: recorder)
+        let runtime = try BundledPluginTestSupport.runtime("vercel-budget", engine: engine, transport: transport)
         return try await runtime.fetchUsage(settings: settings, secrets: Self.secrets, now: Self.now)
     }
 
@@ -65,7 +70,7 @@ struct VercelBudgetPluginTests {
     {
         let recorder = Recorder()
         let first = [
-            Self.budget("user_other", spend: "1", limit: "2"),
+            Self.budget("usr_otherUser", spend: "1", limit: "2"),
             Self.budget(spend: "5", limit: "50", source: "default"),
         ]
         let pages = ["": Self.page(first, next: "page 2"), "page 2": Self.page([Self.budget()])]
@@ -76,7 +81,7 @@ struct VercelBudgetPluginTests {
         #expect(snapshot.details.first?.rows.map(\.value) == ["$30.00", "$120.00", "$90.00"])
         // `spent` is the catalog key for an exhausted quota; the amount row needs the spend noun.
         #expect(snapshot.details.first?.rows.map(\.label) == ["Spend", "Limit", "Remaining"])
-        #expect(snapshot.identity?.accountID == "user_fixture")
+        #expect(snapshot.identity?.accountID == "fixtureUser")
         #expect(snapshot.identity?.accountOrganization == "team_fixture")
         #expect(snapshot.dataConfidence == .exact)
         #expect(recorder.all.compactMap(\.url?.path) == [
@@ -105,7 +110,7 @@ struct VercelBudgetPluginTests {
         #expect(cumulative.primary?.resetsAt == nil)
         #expect(cumulative.primary?.windowMinutes == nil)
 
-        let missing = try await Self.fetch(pages: ["": Self.page([Self.budget("user_other")])])
+        let missing = try await Self.fetch(pages: ["": Self.page([Self.budget("usr_otherUser")])])
         #expect(missing.primary == nil)
         #expect(missing.details.first?.rows.first?.label == "No personal budget configured")
         #expect(missing.details.first?.rows.first?.value == "—")
@@ -176,15 +181,27 @@ struct VercelBudgetPluginTests {
     }
 
     @Test
-    func `missing team fails before any request`() async throws {
+    func `missing team falls back to the default team`() async throws {
+        let snapshot = try await Self.fetch(
+            pages: ["": Self.page([Self.budget()])], settings: [:], team: "team_default")
+        #expect(snapshot.primary?.usedPercent == 25)
+        #expect(snapshot.identity?.accountOrganization == "team_default")
+    }
+
+    @Test
+    func `missing team without a default team fails before reading budgets`() async throws {
         let recorder = Recorder()
         do {
-            _ = try await Self.fetch(pages: [:], settings: [:], recorder: recorder)
+            _ = try await Self.fetch(
+                pages: [:],
+                settings: [:],
+                user: #"{"user":{"id":"fixtureUser"}}"#,
+                recorder: recorder)
             Issue.record("Expected a missing team ID to fail")
         } catch let error as ProviderFetchClassifiedError {
             #expect(error.kind == .missingCredential)
         }
-        #expect(recorder.all.isEmpty)
+        #expect(recorder.all.compactMap(\.url?.path) == ["/v2/user"])
     }
 
     @Test

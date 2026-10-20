@@ -27,7 +27,7 @@ public enum VercelProviderDescriptor {
         burnDownWidgetSelectable: false,
         environmentKey: "AI_GATEWAY_API_KEY",
         missingCredentialMessage: { _ in
-            "Set a Vercel AI Gateway API key, or a Vercel access token and Team ID for your personal budget."
+            "Set a Vercel AI Gateway API key, or a Vercel access token for your personal budget."
         },
         additionalProjections: [.init(key: Self.tokenKey, value: { $0.pluginSecrets?[Self.tokenKey] })],
         alternateCredentialKey: Self.tokenKey,
@@ -42,7 +42,7 @@ public enum VercelProviderDescriptor {
             field: .init(
                 id: "vercel-team-id",
                 title: "Team ID",
-                subtitle: "Required with a Vercel access token. Or set VERCEL_TEAM_ID.",
+                subtitle: "Optional. Defaults to your Vercel default team. Or set VERCEL_TEAM_ID.",
                 placeholder: nil)))
 
     static func budgetValues(_ context: ProviderFetchContext) -> ScriptFetchStrategy.Values? {
